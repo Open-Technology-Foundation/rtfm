@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 readonly -- VERSION='1.0.0'
-# Split declaration and assignment to avoid masking return values
-readonly -- PRG0
-PRG0="$(readlink -en -- "$0")"
+# Use a temporary variable to avoid masking return values
+PRG0_TMP="$(readlink -en -- "$0")"
+readonly -- PRG0="$PRG0_TMP"
 #shellcheck disable=SC2034
 readonly -- PRGDIR="${PRG0%/*}" PRG="${PRG0##*/}"
 #shellcheck disable=SC2015
@@ -228,6 +228,7 @@ process_command() {
     
     # Always try tldr if we have it and no specific source requested
     if ((HAVE_TLDR)) && ((specific_source==0 || do_all==1)); then
+      # Check if tldr exists for this command
       if tldr "$cmd" >/dev/null 2>&1; then
         echo -e "\n## TLDR PAGE\n"
         check_tldr "$cmd"

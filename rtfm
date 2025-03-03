@@ -56,7 +56,14 @@ usage() {
   cat <<EOT
 $PRG $VERSION - Read The Fucking Manuals
 
-Searches for command help in order: builtin help -> man -> info -> tldr
+A command-line utility that searches for documentation about commands 
+across multiple help systems.
+
+Searches for command help in order: 
+1. Bash builtin help
+2. Man pages
+3. Info pages
+4. TLDR pages (if installed)
 
 Usage: $PRG [OPTIONS] command...
 
@@ -70,9 +77,9 @@ Options:
 Other options are passed to 'man' (eg, -k, -K)
 
 Examples:
-  $PRG rsync
-  $PRG declare
-  $PRG rsync coreutils declare
+  $PRG rsync      # Show documentation for rsync
+  $PRG declare    # Show documentation for bash's declare builtin
+  $PRG -m ls      # Show only man page for ls
 EOT
   exit "${1:-0}"
 }

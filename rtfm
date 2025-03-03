@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+set -euo pipefail
+readonly -- VERSION='1.0.0'
+readonly -- PRG0="$(readlink -en -- "$0")"
+#shellcheck disable=SC2034
+readonly -- PRGDIR="${PRG0%/*}" PRG="${PRG0##*/}"
+#shellcheck disable=SC2015
+[ -t 2 ] && declare -- RED=$'\033[0;31m' NOCOLOR=$'\033[0m' || declare -- RED='' NOCOLOR=''
+
+# Global variable to track if tldr is available
+HAVE_TLDR=0
+
+# Documentation: Display error message to stderr
+error() { 
+  local msg
+  for msg in "$@"; do 
+    >&2 printf '%s: %serror%s: %s\n' "$PRG" "$RED" "$NOCOLOR" "$msg"
+  done
+}
+
+# Documentation: Display error message and exit with specified code
+die() { 
+  local -i exitcode=1
+  if (($#)); then 
+    exitcode=$1
+    shift
+  fi
+  if (($#)); then 
+    error "$@"
+  fi
+  exit "$exitcode"
+}
+
+# Use absolute paths for external commands to avoid PATH issues
+grep() { /usr/bin/grep "$@"; }
+less() { /usr/bin/less "$@"; }
+man() { /usr/bin/man "$@"; }
+info() { /usr/bin/info "$@"; }
+
+# Documentation: Clean up function for traps
+cleanup() {
+  local -i exitcode=${1:-0}
+  # Clean up any temporary files that might still exist
+  rm -f "/tmp/rtfm-"*"-$$" 2>/dev/null
+  # Restore cursor if in terminal
+  [[ -t 0 ]] && printf '\e[?25h'
+  exit "$exitcode"
+}
+
+# Set trap for cleanup on exit or interrupt
+trap 'cleanup $?' SIGINT EXIT TERM
+# ----------------------------------------------------------------------------------------
+
+# Documentation: Display usage information
+usage() {
+  cat <<EOT
+$PRG $VERSION - Read The Fucking Manuals
+
+Searches for command help in order: builtin help -> man -> info -> tldr
+
+Usage: $PRG [OPTIONS] command...
+
+Options:
+  -m, --man       Search 'man' only
+  -H, --Help      Search 'help' only
+  -i, --info      Search 'info' only
+  -V, --version   Print version ($VERSION) and exit
+  -h, --help      Display this help
+
+Other options are passed to 'man' (eg, -k, -K)
+
+Examples:
+  $PRG rsync
+  $PRG declare
+  $PRG rsync coreutils declare
+EOT
+  exit "${1:-0}"
+}
+
+# Create associative array for faster builtin lookup
+declare -A BUILTIN_MAP
+for builtin in job_spec \(\( \. : alias bg bind break builtin caller case cd command compgen complete compopt continue coproc declare dirs disown echo enable eval exec exit export false fc fg for function getopts hash help history if jobs kill let local logout mapfile popd printf pushd pwd read readarray readonly return select set shift shopt source suspend test time times trap true type typeset ulimit umask unalias unset until variables wait while; do
+  BUILTIN_MAP["$builtin"]=1
+done
+
+# Documentation: Check if command is a bash builtin and display its help
+check_help() {
+  local -- cmd="$1"
+  
+  # Fast lookup using associative array instead of iteration
+  if [[ -n "${BUILTIN_MAP[$cmd]:-}" ]]; then
+    builtin help -m "$cmd" 2>/dev/null
+    return $?
+  fi
+  
+  return 1
+}
+
+# Documentation: Check if command has a man page and display it
+check_man() {
+  local -- cmd="$1" opts="$2"
+  
+  # shellcheck disable=SC2086
+  if man $opts "$cmd" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+# Documentation: Check if command has an info page and display it
+check_info() {
+  local -- cmd="$1"
+  
+  # First check if info page exists and is accessible
+  if info --where "$cmd" &>/dev/null; then
+    info "$cmd" 2>/dev/null
+    return 0
+  fi
+  
+  # Special case for coreutils
+  if info coreutils "$cmd" 2>/dev/null | grep -A2 -B2 -i "^[ ]*\`$cmd'" &>/dev/null; then
+    info coreutils "$cmd" 2>/dev/null
+    return 0
+  fi
+  
+  return 1
+}
+
+# Documentation: Check if command has a tldr page and display it
+check_tldr() {
+  local cmd="$1"
+  
+  # Skip check if we already know tldr isn't available
+  if ((HAVE_TLDR)); then
+    tldr "$cmd" 2>/dev/null
+    return $?
+  fi
+  
+  return 1
+}
+
+# Documentation: Process a command by searching for its documentation
+process_command() {
+  local -- cmd="$1" opts="$2"
+  # Use mktemp for secure temporary file creation
+  local -- tmpfile
+  tmpfile=$(mktemp -t "rtfm-XXXXXX")
+  local -i do_help="$3" do_man="$4" do_info="$5" found=0
+
+  # Sanity check - ensure cmd doesn't contain dangerous characters
+  if [[ ! "$cmd" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    die 1 "Invalid command name: '$cmd'. Command names must be alphanumeric with optional dots, underscores, and hyphens."
+  fi
+
+  ( if ((do_help)); then
+      check_help "$cmd" && found=1
+    fi
+    
+    if ((do_man)) && ((found==0)); then
+      check_man "$cmd" "$opts" && found=1
+    fi
+    
+    if ((do_info)) && ((found==0)); then
+      check_info "$cmd" && found=1
+    fi
+    
+    # Always try tldr if we have it, regardless of what was found
+    if ((HAVE_TLDR)); then
+      check_tldr "$cmd" && found=1
+    fi
+  ) > "$tmpfile"
+
+  if [[ -s "$tmpfile" ]]; then
+    less -FXSR "$tmpfile"
+    rm -f "$tmpfile"
+    return 0
+  fi
+
+  rm -f "$tmpfile"
+  die 1 "'$cmd' not found."
+}
+
+main() {
+  local -- opts='' cmd
+  local -i do_man=1 do_help=1 do_info=1
+
+  # Check if tldr is available at startup
+  if command -v tldr >/dev/null 2>&1; then
+    HAVE_TLDR=1
+  fi
+
+  (($#)) || >&2 usage 1
+
+  while (($#)); do
+    case $1 in
+      -m|--man)   do_man=1; do_help=0; do_info=0 ;;
+      -H|--Help)  do_man=0; do_help=1; do_info=0 ;;
+      -i|--info)  do_man=0; do_help=0; do_info=1 ;;
+      -V|--version) echo "$PRG $VERSION"; exit 0 ;;
+      -h|--help)  usage 0 ;;
+      -[mHiVh]*)  set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+      -*)         opts+="$1 " ;;
+      *)          process_command "$1" "$opts" "$do_help" "$do_man" "$do_info"
+                  opts='' ;;
+    esac
+    shift
+  done
+}
+
+main "$@"
+#fin

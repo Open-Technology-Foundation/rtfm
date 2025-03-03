@@ -25,6 +25,22 @@ cp rtfm/rtfm ~/bin/
 
 # Make executable
 chmod +x ~/bin/rtfm
+
+# Optional: Install tldr for additional documentation
+# Debian/Ubuntu
+sudo apt install tldr
+
+# Fedora
+sudo dnf install tldr
+
+# Arch Linux
+sudo pacman -S tldr
+
+# macOS
+brew install tldr
+
+# Using npm
+npm install -g tldr
 ```
 
 ## Usage

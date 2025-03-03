@@ -8,9 +8,11 @@ A smart command-line utility that searches for documentation about commands acro
   - Bash builtin help
   - Man pages
   - Info pages
+  - Command --help output
   - TLDR pages (if installed)
+- View all available documentation sources with --all flag
 - Combines results from multiple sources
-- Supports filtering by documentation source (help, man, info)
+- Supports filtering by documentation source (help, man, info, cmd-help)
 - Uses secure temporary files
 - Clean error handling
 
@@ -52,6 +54,8 @@ Options:
   -m, --man       Search 'man' only
   -H, --Help      Search 'help' only
   -i, --info      Search 'info' only
+  -c, --cmd-help  Search command --help output only
+  -a, --all       Show all available documentation (not just first match)
   -V, --version   Print version and exit
   -h, --help      Display this help
 
@@ -59,8 +63,9 @@ Other options are passed to 'man' (eg, -k, -K)
 
 Examples:
   rtfm rsync      # Show documentation for rsync
-  rtfm declare    # Show documentation for declare
+  rtfm declare    # Show documentation for bash's declare builtin
   rtfm -m ls      # Show only man page for ls
+  rtfm -a git     # Show all available documentation for git
 ```
 
 ## Contributing

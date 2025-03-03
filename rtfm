@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 readonly -- VERSION='1.0.0'
-readonly -- PRG0="$(readlink -en -- "$0")"
+# Split declaration and assignment to avoid masking return values
+readonly -- PRG0
+PRG0="$(readlink -en -- "$0")"
 #shellcheck disable=SC2034
 readonly -- PRGDIR="${PRG0%/*}" PRG="${PRG0##*/}"
 #shellcheck disable=SC2015
 [ -t 2 ] && declare -- RED=$'\033[0;31m' NOCOLOR=$'\033[0m' || declare -- RED='' NOCOLOR=''
 
 # Global variable to track if tldr is available
-HAVE_TLDR=0
+declare -i HAVE_TLDR=0
 
 # Documentation: Display error message to stderr
 error() { 
@@ -63,7 +65,8 @@ Searches for command help in order:
 1. Bash builtin help
 2. Man pages
 3. Info pages
-4. TLDR pages (if installed)
+4. Command --help output
+5. TLDR pages (if installed)
 
 Usage: $PRG [OPTIONS] command...
 
@@ -71,6 +74,8 @@ Options:
   -m, --man       Search 'man' only
   -H, --Help      Search 'help' only
   -i, --info      Search 'info' only
+  -c, --cmd-help  Search command --help output only
+  -a, --all       Show all available documentation (not just first match)
   -V, --version   Print version ($VERSION) and exit
   -h, --help      Display this help
 
@@ -80,6 +85,7 @@ Examples:
   $PRG rsync      # Show documentation for rsync
   $PRG declare    # Show documentation for bash's declare builtin
   $PRG -m ls      # Show only man page for ls
+  $PRG -a git     # Show all available documentation for git
 EOT
   exit "${1:-0}"
 }
@@ -139,8 +145,20 @@ check_tldr() {
   
   # Skip check if we already know tldr isn't available
   if ((HAVE_TLDR)); then
-    tldr "$cmd" 2>/dev/null
+    tldr --platform linux "$cmd" 2>/dev/null
     return $?
+  fi
+  
+  return 1
+}
+
+# Documentation: Check if command has --help option and display it
+check_cmdhelp() {
+  local cmd="$1"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    # Run the command with --help and capture its output
+    "$cmd" --help 2>&1
+    return 0
   fi
   
   return 1
@@ -152,28 +170,69 @@ process_command() {
   # Use mktemp for secure temporary file creation
   local -- tmpfile
   tmpfile=$(mktemp -t "rtfm-XXXXXX")
-  local -i do_help="$3" do_man="$4" do_info="$5" found=0
+  local -i do_help="$3" do_man="$4" do_info="$5" do_cmdhelp="$6" do_all="$7" found=0
+  local -i specific_source=0
+
+  # Check if a specific documentation source was requested
+  if (( (do_help + do_man + do_info + do_cmdhelp) < 4 )); then
+    specific_source=1
+  fi
 
   # Sanity check - ensure cmd doesn't contain dangerous characters
   if [[ ! "$cmd" =~ ^[a-zA-Z0-9._-]+$ ]]; then
     die 1 "Invalid command name: '$cmd'. Command names must be alphanumeric with optional dots, underscores, and hyphens."
   fi
 
-  ( if ((do_help)); then
-      check_help "$cmd" && found=1
+  ( echo "# Documentation for: $cmd"
+    echo ""
+    
+    # Bash builtin help
+    if ((do_help)); then
+      if check_help "$cmd" 2>/dev/null; then
+        echo -e "\n## BASH BUILTIN HELP\n"
+        check_help "$cmd" 
+        found=1
+        echo -e "\n---\n"
+      fi
     fi
     
-    if ((do_man)) && ((found==0)); then
-      check_man "$cmd" "$opts" && found=1
+    # Man page
+    if ((do_man)) && ( ((do_all==1)) || ((found==0)) ); then
+      if check_man "$cmd" "$opts" 2>/dev/null; then
+        echo -e "\n## MAN PAGE\n"
+        check_man "$cmd" "$opts"
+        found=1
+        echo -e "\n---\n"
+      fi
     fi
     
-    if ((do_info)) && ((found==0)); then
-      check_info "$cmd" && found=1
+    # Info page
+    if ((do_info)) && ( ((do_all==1)) || ((found==0)) ); then
+      if check_info "$cmd" 2>/dev/null; then
+        echo -e "\n## INFO PAGE\n"
+        check_info "$cmd"
+        found=1
+        echo -e "\n---\n"
+      fi
     fi
     
-    # Always try tldr if we have it, regardless of what was found
-    if ((HAVE_TLDR)); then
-      check_tldr "$cmd" && found=1
+    # Command --help
+    if ((do_cmdhelp)) && ( ((do_all==1)) || ((found==0)) ); then
+      if command -v "$cmd" >/dev/null 2>&1; then
+        echo -e "\n## --HELP OUTPUT\n"
+        check_cmdhelp "$cmd"
+        found=1
+        echo -e "\n---\n"
+      fi
+    fi
+    
+    # Always try tldr if we have it and no specific source requested
+    if ((HAVE_TLDR)) && ((specific_source==0 || do_all==1)); then
+      if tldr "$cmd" >/dev/null 2>&1; then
+        echo -e "\n## TLDR PAGE\n"
+        check_tldr "$cmd"
+        found=1
+      fi
     fi
   ) > "$tmpfile"
 
@@ -189,7 +248,7 @@ process_command() {
 
 main() {
   local -- opts='' cmd
-  local -i do_man=1 do_help=1 do_info=1
+  local -i do_man=1 do_help=1 do_info=1 do_cmdhelp=1 do_all=0
 
   # Check if tldr is available at startup
   if command -v tldr >/dev/null 2>&1; then
@@ -200,15 +259,18 @@ main() {
 
   while (($#)); do
     case $1 in
-      -m|--man)   do_man=1; do_help=0; do_info=0 ;;
-      -H|--Help)  do_man=0; do_help=1; do_info=0 ;;
-      -i|--info)  do_man=0; do_help=0; do_info=1 ;;
-      -V|--version) echo "$PRG $VERSION"; exit 0 ;;
-      -h|--help)  usage 0 ;;
-      -[mHiVh]*)  set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}" ;;
-      -*)         opts+="$1 " ;;
-      *)          process_command "$1" "$opts" "$do_help" "$do_man" "$do_info"
-                  opts='' ;;
+      -m|--man)       do_man=1; do_help=0; do_info=0; do_cmdhelp=0 ;;
+      -H|--Help)      do_man=0; do_help=1; do_info=0; do_cmdhelp=0 ;;
+      -i|--info)      do_man=0; do_help=0; do_info=1; do_cmdhelp=0 ;;
+      -c|--cmd-help)  do_man=0; do_help=0; do_info=0; do_cmdhelp=1 ;;
+      -a|--all)       do_all=1 ;;
+      -V|--version)   echo "$PRG $VERSION"; exit 0 ;;
+      -h|--help)      usage 0 ;;
+      -[mHicaVh]*)    #shellcheck disable=SC2046
+                      set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+      -*)             opts+="$1 " ;;
+      *)              process_command "$1" "$opts" "$do_help" "$do_man" "$do_info" "$do_cmdhelp" "$do_all"
+                      opts='' ;;
     esac
     shift
   done

@@ -33,12 +33,6 @@ die() {
   exit "$exitcode"
 }
 
-# Use absolute paths for external commands to avoid PATH issues
-grep() { /usr/bin/grep "$@"; }
-less() { /usr/bin/less "$@"; }
-man() { /usr/bin/man "$@"; }
-info() { /usr/bin/info "$@"; }
-
 # Documentation: Clean up function for traps
 cleanup() {
   local -i exitcode=${1:-0}
@@ -113,8 +107,8 @@ check_help() {
 check_man() {
   local -- cmd="$1" opts="$2"
   
-  # shellcheck disable=SC2086
-  if man $opts "$cmd" 2>/dev/null; then
+  # Use command to avoid function recursion
+  if command man $opts "$cmd" 2>/dev/null; then
     return 0
   fi
   return 1
@@ -125,14 +119,14 @@ check_info() {
   local -- cmd="$1"
   
   # First check if info page exists and is accessible
-  if info --where "$cmd" &>/dev/null; then
-    info "$cmd" 2>/dev/null
+  if command info --where "$cmd" &>/dev/null; then
+    command info "$cmd" 2>/dev/null
     return 0
   fi
   
   # Special case for coreutils
-  if info coreutils "$cmd" 2>/dev/null | grep -A2 -B2 -i "^[ ]*\`$cmd'" &>/dev/null; then
-    info coreutils "$cmd" 2>/dev/null
+  if command info coreutils "$cmd" 2>/dev/null | command grep -A2 -B2 -i "^[ ]*\`$cmd'" &>/dev/null; then
+    command info coreutils "$cmd" 2>/dev/null
     return 0
   fi
   
@@ -145,7 +139,8 @@ check_tldr() {
   
   # Skip check if we already know tldr isn't available
   if ((HAVE_TLDR)); then
-    tldr --platform linux "$cmd" 2>/dev/null
+    # Preserve ANSI colors by using FORCE_COLOR=1
+    FORCE_COLOR=1 command tldr "$cmd" 2>/dev/null
     return $?
   fi
   
@@ -156,8 +151,8 @@ check_tldr() {
 check_cmdhelp() {
   local cmd="$1"
   if command -v "$cmd" >/dev/null 2>&1; then
-    # Run the command with --help and capture its output
-    "$cmd" --help 2>&1
+    # Run the actual command with --help and capture its output
+    command "$cmd" --help 2>&1
     return 0
   fi
   
@@ -168,8 +163,6 @@ check_cmdhelp() {
 process_command() {
   local -- cmd="$1" opts="$2"
   # Use mktemp for secure temporary file creation
-  local -- tmpfile
-  tmpfile=$(mktemp -t "rtfm-XXXXXX")
   local -i do_help="$3" do_man="$4" do_info="$5" do_cmdhelp="$6" do_all="$7" found=0
   local -i specific_source=0
 
@@ -183,67 +176,82 @@ process_command() {
     die 1 "Invalid command name: '$cmd'. Command names must be alphanumeric with optional dots, underscores, and hyphens."
   fi
 
-  ( echo "# Documentation for: $cmd"
-    echo ""
-    
-    # Bash builtin help
-    if ((do_help)); then
-      if check_help "$cmd" 2>/dev/null; then
-        echo -e "\n## BASH BUILTIN HELP\n"
-        check_help "$cmd" 
-        found=1
-        echo -e "\n---\n"
-      fi
-    fi
-    
-    # Man page
-    if ((do_man)) && ( ((do_all==1)) || ((found==0)) ); then
-      if check_man "$cmd" "$opts" 2>/dev/null; then
-        echo -e "\n## MAN PAGE\n"
-        check_man "$cmd" "$opts"
-        found=1
-        echo -e "\n---\n"
-      fi
-    fi
-    
-    # Info page
-    if ((do_info)) && ( ((do_all==1)) || ((found==0)) ); then
-      if check_info "$cmd" 2>/dev/null; then
-        echo -e "\n## INFO PAGE\n"
-        check_info "$cmd"
-        found=1
-        echo -e "\n---\n"
-      fi
-    fi
-    
-    # Command --help
-    if ((do_cmdhelp)) && ( ((do_all==1)) || ((found==0)) ); then
-      if command -v "$cmd" >/dev/null 2>&1; then
-        echo -e "\n## --HELP OUTPUT\n"
-        check_cmdhelp "$cmd"
-        found=1
-        echo -e "\n---\n"
-      fi
-    fi
-    
-    # Always try tldr if we have it and no specific source requested
-    if ((HAVE_TLDR)) && ((specific_source==0 || do_all==1)); then
-      # Check if tldr exists for this command
-      if tldr "$cmd" >/dev/null 2>&1; then
-        echo -e "\n## TLDR PAGE\n"
-        check_tldr "$cmd"
-        found=1
-      fi
-    fi
-  ) > "$tmpfile"
+  # Use a temporary file for collecting documentation
+  local tmpfile
+  tmpfile=$(mktemp -t "rtfm-XXXXXX-$$")
 
-  if [[ -s "$tmpfile" ]]; then
-    less -FXSR "$tmpfile"
+  # Start the documentation file - empty file, no headers
+  > "$tmpfile"
+
+  # Bash builtin help
+  if ((do_help)); then
+    if check_help "$cmd" >/dev/null 2>&1; then
+      echo "## BASH BUILTIN HELP" >> "$tmpfile"
+      check_help "$cmd" >> "$tmpfile"
+      found=1
+      echo -e "\n---\n" >> "$tmpfile"
+    fi
+  fi
+
+  # Man page
+  if ((do_man)) && ( ((do_all==1)) || ((found==0)) ); then
+    echo -e "## MAN PAGE" >> "$tmpfile"
+    check_man "$cmd" "$opts" >> "$tmpfile" 2>/dev/null
+    found=1
+    echo -e "\n---\n" >> "$tmpfile"
+  fi
+
+  # Info page
+  if ((do_info)) && ( ((do_all==1)) || ((found==0)) ); then
+    if check_info "$cmd" >/dev/null 2>&1; then
+      echo -e "## INFO PAGE" >> "$tmpfile"
+      check_info "$cmd" >> "$tmpfile"
+      found=1
+      echo -e "\n---\n" >> "$tmpfile"
+    fi
+  fi
+
+  # Command --help
+  if ((do_cmdhelp)) && ( ((do_all==1)) || ((found==0)) ); then
+    if command -v "$cmd" >/dev/null 2>&1; then
+      echo -e "## --HELP OUTPUT" >> "$tmpfile"
+      check_cmdhelp "$cmd" >> "$tmpfile"
+      found=1
+      echo -e "\n---\n" >> "$tmpfile"
+    fi
+  fi
+
+  # TLDR pages if available
+  if ((HAVE_TLDR)) && ((specific_source==0 || do_all==1)); then
+    # Try to use tldr directly (no need to check if exists first)
+    echo -e "## TLDR PAGE" >> "$tmpfile"
+    
+    # Create a temporary file for tldr output to fix indentation
+    local tldr_tmpfile=$(mktemp -t "rtfm-tldr-XXXXXX-$$")
+    
+    if check_tldr "$cmd" > "$tldr_tmpfile" 2>/dev/null; then
+      # Fix indentation by removing exactly one leading space from each line (if present)
+      sed 's/^ //' "$tldr_tmpfile" >> "$tmpfile"
+      found=1
+      echo -e "\n---\n" >> "$tmpfile"
+    else
+      # Remove the TLDR header if no content was added
+      sed -i '/^## TLDR PAGE$/,+1d' "$tmpfile"
+    fi
+
+    # Clean up tldr temporary file
+    rm -f "$tldr_tmpfile"
+  fi
+
+  # Display the content using less -R to preserve colors
+  if ((found==1)); then
+    command less -FXR "$tmpfile"
     rm -f "$tmpfile"
     return 0
   fi
 
   rm -f "$tmpfile"
+
   die 1 "'$cmd' not found."
 }
 
@@ -267,8 +275,16 @@ main() {
       -a|--all)       do_all=1 ;;
       -V|--version)   echo "$PRG $VERSION"; exit 0 ;;
       -h|--help)      usage 0 ;;
-      -[mHicaVh]*)    #shellcheck disable=SC2046
-                      set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+      -[mHicaVh]*)
+                      # Split combined short options like -abc into -a -b -c
+                      local chars="${1:1}" # Remove the leading dash
+                      local opts_expanded=()
+                      # Loop through each character and create separate options
+                      for ((i=0; i<${#chars}; i++)); do
+                        opts_expanded+=("-${chars:$i:1}")
+                      done
+                      # Replace current arg with the expanded options
+                      set -- '' "${opts_expanded[@]}" "${@:2}" ;;
       -*)             opts+="$1 " ;;
       *)              process_command "$1" "$opts" "$do_help" "$do_man" "$do_info" "$do_cmdhelp" "$do_all"
                       opts='' ;;
@@ -278,4 +294,5 @@ main() {
 }
 
 main "$@"
+
 #fin

@@ -173,8 +173,10 @@ install_update_rtfm() {
 
     if ((VERBOSE)); then
       /usr/bin/ls -lh "$BASEDIR"* /usr/local/bin/"$repo" -d
+      echo
     fi
   done
+  echo "$PRG: $installupdate complete"
   exit 0
 }
 

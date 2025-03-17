@@ -58,21 +58,22 @@ main() {
   while (($#)); do
     case $1 in
       -r|--rebuild-lists)
-                  rebuild_help_lists
-                  exit 0
-                  ;;
-      -h|--help)  usage 0 ;;
-      --install|--update)
-                  sudo -ln &>/dev/null || {
-                     >&2 echo "$PRG: Install/Update requires root, or non-interactive sudo privileges."
-                     exit 1
-                  }
-                  sudo -n "$0" installupdate --verbose; exit
-                  ;;
-      -*)         >&2 echo "$PRG: Invalid option '$1'" ;;
-      *)          [[ -n $cmd ]] && { >&2 echo "$PRG: Too many arguments"; exit 22; }
-                  cmd="$1"
-                  ;;
+              rebuild_help_lists
+              exit 0
+              ;;
+      update|--install|--update)
+              sudo -ln &>/dev/null || {
+                 >&2 echo "$PRG: Install/Update requires root, or non-interactive sudo privileges."
+                 exit 1
+              }
+              sudo -n "$0" installupdate --verbose; exit
+              ;;
+      help|-h|--help)
+              usage 0 ;;
+      -*)     >&2 echo "$PRG: Invalid option '$1'" ;;
+      *)      [[ -n $cmd ]] && { >&2 echo "$PRG: Too many arguments"; exit 22; }
+              cmd="$1"
+              ;;
     esac
     shift
   done

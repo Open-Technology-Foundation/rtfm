@@ -153,7 +153,7 @@ install_update_rtfm() {
 
   REPOBASE=https://github.com/Open-Technology-Foundation
   for repo in tldr md2ansi rtfm; do
-    ((VERBOSE)) && echo "$PRG: $installupdate $repo from Open Technology Foundation"
+    ((VERBOSE)) && echo "$PRG: $installupdate $repo from $REPOBASE"
     BASEDIR=/usr/local/share/"$repo"
     rm -rf ."$BASEDIR"
     /usr/bin/git clone -q "$REPOBASE"/"$repo" ."$BASEDIR"
@@ -172,7 +172,7 @@ install_update_rtfm() {
     fi
 
     if ((VERBOSE)); then
-      /usr/bin/ls -lh "$BASEDIR"* -d
+      /usr/bin/ls -lh "$BASEDIR"* /usr/local/bin/"$repo" -d
     fi
   done
   exit 0

@@ -178,7 +178,7 @@ install_update_rtfm() {
     fi
 
     if ((VERBOSE)); then
-      /usr/bin/ls -lh "$BASEDIR"* /usr/local/bin/"$repo" -d
+      /usr/bin/ls -lh "$BASEDIR"* /usr/local/bin/"$repo" -d || true
       echo
     fi
   done

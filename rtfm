@@ -164,13 +164,13 @@ install_update_rtfm() {
   for repo in tldr md2ansi rtfm; do
     ((VERBOSE)) && echo "$PRG: $installupdate $repo from $REPOBASE"
     BASEDIR=/usr/local/share/"$repo"
-    rm -rf ."$BASEDIR"
-    /usr/bin/git clone -q "$REPOBASE"/"$repo" ."$BASEDIR"
+    rm -rf "$BASEDIR".tmp
+    /usr/bin/git clone -q "$REPOBASE"/"$repo" "$BASEDIR".tmp
     if [[ -d "$BASEDIR" ]]; then
       rm -rf "$BASEDIR".bak
       mv "$BASEDIR" "$BASEDIR".bak
     fi
-    mv ".$BASEDIR" "$BASEDIR"
+    mv "$BASEDIR".tmp "$BASEDIR"
     rm -rf "$BASEDIR".bak
 
     if [[ $repo == rtfm ]]; then

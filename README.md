@@ -16,6 +16,33 @@ A smart command-line utility that searches for documentation about commands acro
 
 ## Installation
 
+### Method 1: Automatic Installation (Recommended)
+
+The easiest way to install rtfm and its recommended dependencies is to use the built-in installer:
+
+```bash
+# Download the script
+wget https://raw.githubusercontent.com/Open-Technology-Foundation/rtfm/main/rtfm
+
+# Make it executable
+chmod +x rtfm
+
+# Install rtfm, md2ansi, and tldr from GitHub
+sudo ./rtfm --install
+
+# Optional: Rebuild help lists
+rtfm --rebuild-lists
+```
+
+This will automatically install:
+- rtfm (documentation lookup utility)
+- md2ansi (markdown to terminal converter for nicer formatting)
+- tldr pages from GitHub (simplified command documentation)
+
+### Method 2: Manual Installation
+
+If you prefer to install manually:
+
 ```bash
 # Clone the repository
 git clone https://github.com/Open-Technology-Foundation/rtfm.git
@@ -47,6 +74,15 @@ brew install tldr
 npm install -g tldr
 ```
 
+### Updating
+
+To update rtfm and its recommended dependencies:
+
+```bash
+# Update rtfm, md2ansi, and tldr from GitHub
+sudo rtfm --update
+```
+
 ## Usage
 
 ```bash
@@ -55,6 +91,7 @@ rtfm [OPTIONS] command
 Options:
   -r,--rebuild-lists  Rebuild command lists for each help command
   -h,--help           Display this help
+  --install,--update  Install or update rtfm, md2ansi, and tldr from GitHub
 
 Examples:
   rtfm rsync      # Show documentation for rsync

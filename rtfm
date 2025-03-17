@@ -36,6 +36,7 @@ Usage: $PRG [OPTIONS] command
 Options:
   -r,--rebuild-lists  Rebuild command lists for each help command
   -h,--help           This help
+  --install,--update  Install or update rtfm, md2ansi, and tldr from GitHub
 
 Examples:
   $PRG rsync
@@ -111,11 +112,14 @@ rebuild_help_lists() {
   echo "Update RTFM Help File Lists"
   echo
 
-#  echo "Updating bash builtin command list"
-#  builtin help -s | awk '{if(NR>1)print $1}' \
-#      | sort -u \
-#      | grep -v ^$ \
-#    >"$PRGDIR"/builtin.list || true
+  # Note: builtin.list is pre-populated with a comprehensive list
+  # Uncomment below to regenerate from scratch (not recommended)
+  #
+  # echo "Updating bash builtin command list"
+  # builtin help -s | awk '{if(NR>1)print $1}' \
+  #     | sort -u \
+  #     | grep -v ^$ \
+  #   >"$PRGDIR"/builtin.list || true
 
   if [[ -n $TLDR ]]; then
     echo "Updating tldr command list"
@@ -183,7 +187,8 @@ install_update_rtfm() {
 # catch install/update command
 if ((EUID==0)); then
   if [[ "${1:-}" == installupdate ]]; then
-    install_update_rtfm "${@:2}"; exit
+    install_update_rtfm "${@:2}"
+    # Not necessary to call exit here as the function already does
   fi
 fi
 

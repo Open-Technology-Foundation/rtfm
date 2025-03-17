@@ -15,6 +15,8 @@ TLDR=$(command -v tldr 2>/dev/null)
 # md2ansi optional, but recommended
 MD2ANSI=$(command -v md2ansi 2>/dev/null || echo 'cat -s -')
 
+declare -- TLDR_BASEDIR=/usr/local/share/tldr
+
 usage() {
   cat <<EOT
 $PRG - Read The Fucking Manuals
@@ -49,6 +51,7 @@ EOT
 
 main() {
   local -- cmd='' pagebreak=''
+  local -a files=()
 
   (( $# )) || >&2 usage 1
 
@@ -93,9 +96,10 @@ main() {
     fi
 
     if [[ -n $TLDR ]]; then
-      if grep -q -m1 ^"$cmd"$ "$PRGDIR"/tldr.list 2>/dev/null; then
+      readarray -t files < <(find "$TLDR_BASEDIR"/pages/common "$TLDR_BASEDIR"/pages/linux -type f -name "$cmd".md 2>/dev/null)
+      if ((${#files[@]})); then
         echo -e "$pagebreak# TLDR\n"
-        "$TLDR" -m "$cmd" 2>/dev/null | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'
+        cat -s -- "${files[0]}" | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'
         pagebreak="\n---\n"
       fi
     fi

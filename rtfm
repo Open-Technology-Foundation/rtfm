@@ -155,7 +155,7 @@ install_update_rtfm() {
 
   local -- REPOBASE BASEDIR repo installupdate='Installing'
 
-  [[ -x /usr/local/share/rtfm ]] && installupdate='Updating'
+  [[ -f /usr/local/share/rtfm ]] && installupdate='Updating'
 
   REPOBASE=https://github.com/Open-Technology-Foundation
   for repo in tldr md2ansi rtfm; do

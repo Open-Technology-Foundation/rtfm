@@ -114,9 +114,6 @@ main() {
 }
 
 rebuild_help_lists() {
-  echo "$PRG: Update RTFM Help File Lists"
-  echo
-
   # Note: builtin.list is pre-populated with a comprehensive list
   # Uncomment below to regenerate from scratch (not recommended)
   #

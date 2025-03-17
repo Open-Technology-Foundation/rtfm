@@ -1,6 +1,6 @@
 # rtfm - Read The Fucking Manuals
 
-A smart command-line utility that searches for documentation about commands across multiple help systems.
+A smart command-line utility that searches for documentation about commands across multiple help systems and concatenates the results.
 
 ## Features
 
@@ -8,13 +8,11 @@ A smart command-line utility that searches for documentation about commands acro
   - Bash builtin help
   - Man pages
   - Info pages
-  - Command --help output
   - TLDR pages (if installed)
-- View all available documentation sources with --all flag
-- Combines results from multiple sources
-- Supports filtering by documentation source (help, man, info, cmd-help)
-- Uses secure temporary files
-- Clean error handling
+- Combines results from all available documentation sources
+- Uses markdown formatting with md2ansi support (if installed)
+- Clean pagination with less
+- Easy list rebuilding for keeping documentation sources up-to-date
 
 ## Installation
 
@@ -22,11 +20,15 @@ A smart command-line utility that searches for documentation about commands acro
 # Clone the repository
 git clone https://github.com/Open-Technology-Foundation/rtfm.git
 
-# Move to your bin directory
-cp rtfm/rtfm ~/bin/
+# Install to system directory (requires sudo)
+sudo mkdir -p /usr/local/share/rtfm
+sudo cp -r rtfm/* /usr/local/share/rtfm/
 
-# Make executable
-chmod +x ~/bin/rtfm
+# Create symlink to executable
+sudo ln -sf /usr/local/share/rtfm/rtfm /usr/local/bin/rtfm
+
+# Optional: Rebuild help lists on first run
+rtfm --rebuild-lists
 
 # Optional: Install tldr for additional documentation
 # Debian/Ubuntu
@@ -48,25 +50,26 @@ npm install -g tldr
 ## Usage
 
 ```bash
-rtfm [OPTIONS] command...
+rtfm [OPTIONS] command
 
 Options:
-  -m, --man       Search 'man' only
-  -H, --Help      Search 'help' only
-  -i, --info      Search 'info' only
-  -c, --cmd-help  Search command --help output only
-  -a, --all       Show all available documentation (not just first match)
-  -V, --version   Print version and exit
-  -h, --help      Display this help
-
-Other options are passed to 'man' (eg, -k, -K)
+  -r,--rebuild-lists  Rebuild command lists for each help command
+  -h,--help           Display this help
 
 Examples:
   rtfm rsync      # Show documentation for rsync
   rtfm declare    # Show documentation for bash's declare builtin
-  rtfm -m ls      # Show only man page for ls
-  rtfm -a git     # Show all available documentation for git
+  rtfm ls         # Show documentation for ls
+  rtfm git        # Show documentation for git
 ```
+
+rtfm searches for documentation in these list files:
+- builtin.list - Bash builtin commands
+- man.list - Commands with man pages
+- info.list - Commands with info pages
+- tldr.list - Commands with TLDR pages
+
+Run `rtfm --rebuild-lists` to generate or update these files.
 
 ## Contributing
 

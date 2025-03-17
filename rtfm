@@ -1,296 +1,139 @@
 #!/usr/bin/env bash
 set -euo pipefail
-readonly -- VERSION='1.0.0'
-# Use a temporary variable to avoid masking return values
-PRG0_TMP="$(readlink -en -- "$0")"
-readonly -- PRG0="$PRG0_TMP"
-#shellcheck disable=SC2034
-readonly -- PRGDIR="${PRG0%/*}" PRG="${PRG0##*/}"
-#shellcheck disable=SC2015
-[ -t 2 ] && declare -- RED=$'\033[0;31m' NOCOLOR=$'\033[0m' || declare -- RED='' NOCOLOR=''
+declare -- PRG0 PRGDIR PRG
+PRG0="$(readlink -en -- "$0")"
+PRGDIR="${PRG0%/*}"
+PRG="${PRG0##*/}"
 
-# Global variable to track if tldr is available
-declare -i HAVE_TLDR=0
+# Initialize COLUMNS for md2ansi if not already set
+[[ -z "${COLUMNS:-}" ]] && COLUMNS=$(tput cols 2>/dev/null || echo 80)
+export COLUMNS
 
-# Documentation: Display error message to stderr
-error() { 
-  local msg
-  for msg in "$@"; do 
-    >&2 printf '%s: %serror%s: %s\n' "$PRG" "$RED" "$NOCOLOR" "$msg"
-  done
-}
+declare -- TLDR MD2ANSI
+# tldr optional, but recommended
+TLDR=$(command -v tldr 2>/dev/null)
+# md2ansi optional, but recommended
+MD2ANSI=$(command -v md2ansi 2>/dev/null || echo 'cat -s -')
 
-# Documentation: Display error message and exit with specified code
-die() { 
-  local -i exitcode=1
-  if (($#)); then 
-    exitcode=$1
-    shift
-  fi
-  if (($#)); then 
-    error "$@"
-  fi
-  exit "$exitcode"
-}
-
-# Documentation: Clean up function for traps
-cleanup() {
-  local -i exitcode=${1:-0}
-  # Clean up any temporary files that might still exist
-  rm -f "/tmp/rtfm-"*"-$$" 2>/dev/null
-  # Restore cursor if in terminal
-  [[ -t 0 ]] && printf '\e[?25h'
-  exit "$exitcode"
-}
-
-# Set trap for cleanup on exit or interrupt
-trap 'cleanup $?' SIGINT EXIT TERM
-# ----------------------------------------------------------------------------------------
-
-# Documentation: Display usage information
 usage() {
   cat <<EOT
-$PRG $VERSION - Read The Fucking Manuals
+$PRG - Read The Fucking Manuals
 
-A command-line utility that searches for documentation about commands 
+A command-line utility that searches for documentation about commands
 across multiple help systems.
 
-Searches for command help in order: 
+Searches for command help in order:
+
 1. Bash builtin help
 2. Man pages
 3. Info pages
-4. Command --help output
-5. TLDR pages (if installed)
+4. TLDR pages (if tldr installed)
 
-Usage: $PRG [OPTIONS] command...
+All found pages are concatenated.
+
+Usage: $PRG [OPTIONS] command
 
 Options:
-  -m, --man       Search 'man' only
-  -H, --Help      Search 'help' only
-  -i, --info      Search 'info' only
-  -c, --cmd-help  Search command --help output only
-  -a, --all       Show all available documentation (not just first match)
-  -V, --version   Print version ($VERSION) and exit
-  -h, --help      Display this help
-
-Other options are passed to 'man' (eg, -k, -K)
+  -r,--rebuild-lists  Rebuild command lists for each help command
+  -h,--help           This help
 
 Examples:
-  $PRG rsync      # Show documentation for rsync
-  $PRG declare    # Show documentation for bash's declare builtin
-  $PRG -m ls      # Show only man page for ls
-  $PRG -a git     # Show all available documentation for git
+  $PRG rsync
+  $PRG declare
+  $PRG ls
+  $PRG git
 EOT
   exit "${1:-0}"
 }
 
-# Create associative array for faster builtin lookup
-declare -A BUILTIN_MAP
-for builtin in job_spec \(\( \. : alias bg bind break builtin caller case cd command compgen complete compopt continue coproc declare dirs disown echo enable eval exec exit export false fc fg for function getopts hash help history if jobs kill let local logout mapfile popd printf pushd pwd read readarray readonly return select set shift shopt source suspend test time times trap true type typeset ulimit umask unalias unset until variables wait while; do
-  BUILTIN_MAP["$builtin"]=1
-done
-
-# Documentation: Check if command is a bash builtin and display its help
-check_help() {
-  local -- cmd="$1"
-  
-  # Fast lookup using associative array instead of iteration
-  if [[ -n "${BUILTIN_MAP[$cmd]:-}" ]]; then
-    builtin help -m "$cmd" 2>/dev/null
-    return $?
-  fi
-  
-  return 1
-}
-
-# Documentation: Check if command has a man page and display it
-check_man() {
-  local -- cmd="$1" opts="$2"
-  
-  # Use command to avoid function recursion
-  if command man $opts "$cmd" 2>/dev/null; then
-    return 0
-  fi
-  return 1
-}
-
-# Documentation: Check if command has an info page and display it
-check_info() {
-  local -- cmd="$1"
-  
-  # First check if info page exists and is accessible
-  if command info --where "$cmd" &>/dev/null; then
-    command info "$cmd" 2>/dev/null
-    return 0
-  fi
-  
-  # Special case for coreutils
-  if command info coreutils "$cmd" 2>/dev/null | command grep -A2 -B2 -i "^[ ]*\`$cmd'" &>/dev/null; then
-    command info coreutils "$cmd" 2>/dev/null
-    return 0
-  fi
-  
-  return 1
-}
-
-# Documentation: Check if command has a tldr page and display it
-check_tldr() {
-  local cmd="$1"
-  
-  # Skip check if we already know tldr isn't available
-  if ((HAVE_TLDR)); then
-    # Preserve ANSI colors by using FORCE_COLOR=1
-    FORCE_COLOR=1 command tldr "$cmd" 2>/dev/null
-    return $?
-  fi
-  
-  return 1
-}
-
-# Documentation: Check if command has --help option and display it
-check_cmdhelp() {
-  local cmd="$1"
-  if command -v "$cmd" >/dev/null 2>&1; then
-    # Run the actual command with --help and capture its output
-    command "$cmd" --help 2>&1
-    return 0
-  fi
-  
-  return 1
-}
-
-# Documentation: Process a command by searching for its documentation
-process_command() {
-  local -- cmd="$1" opts="$2"
-  # Use mktemp for secure temporary file creation
-  local -i do_help="$3" do_man="$4" do_info="$5" do_cmdhelp="$6" do_all="$7" found=0
-  local -i specific_source=0
-
-  # Check if a specific documentation source was requested
-  if (( (do_help + do_man + do_info + do_cmdhelp) < 4 )); then
-    specific_source=1
-  fi
-
-  # Sanity check - ensure cmd doesn't contain dangerous characters
-  if [[ ! "$cmd" =~ ^[a-zA-Z0-9._-]+$ ]]; then
-    die 1 "Invalid command name: '$cmd'. Command names must be alphanumeric with optional dots, underscores, and hyphens."
-  fi
-
-  # Use a temporary file for collecting documentation
-  local tmpfile
-  tmpfile=$(mktemp -t "rtfm-XXXXXX-$$")
-
-  # Start the documentation file - empty file, no headers
-  > "$tmpfile"
-
-  # Bash builtin help
-  if ((do_help)); then
-    if check_help "$cmd" >/dev/null 2>&1; then
-      echo "## BASH BUILTIN HELP" >> "$tmpfile"
-      check_help "$cmd" >> "$tmpfile"
-      found=1
-      echo -e "\n---\n" >> "$tmpfile"
-    fi
-  fi
-
-  # Man page
-  if ((do_man)) && ( ((do_all==1)) || ((found==0)) ); then
-    echo -e "## MAN PAGE" >> "$tmpfile"
-    check_man "$cmd" "$opts" >> "$tmpfile" 2>/dev/null
-    found=1
-    echo -e "\n---\n" >> "$tmpfile"
-  fi
-
-  # Info page
-  if ((do_info)) && ( ((do_all==1)) || ((found==0)) ); then
-    if check_info "$cmd" >/dev/null 2>&1; then
-      echo -e "## INFO PAGE" >> "$tmpfile"
-      check_info "$cmd" >> "$tmpfile"
-      found=1
-      echo -e "\n---\n" >> "$tmpfile"
-    fi
-  fi
-
-  # Command --help
-  if ((do_cmdhelp)) && ( ((do_all==1)) || ((found==0)) ); then
-    if command -v "$cmd" >/dev/null 2>&1; then
-      echo -e "## --HELP OUTPUT" >> "$tmpfile"
-      check_cmdhelp "$cmd" >> "$tmpfile"
-      found=1
-      echo -e "\n---\n" >> "$tmpfile"
-    fi
-  fi
-
-  # TLDR pages if available
-  if ((HAVE_TLDR)) && ((specific_source==0 || do_all==1)); then
-    # Try to use tldr directly (no need to check if exists first)
-    echo -e "## TLDR PAGE" >> "$tmpfile"
-    
-    # Create a temporary file for tldr output to fix indentation
-    local tldr_tmpfile=$(mktemp -t "rtfm-tldr-XXXXXX-$$")
-    
-    if check_tldr "$cmd" > "$tldr_tmpfile" 2>/dev/null; then
-      # Fix indentation by removing exactly one leading space from each line (if present)
-      sed 's/^ //' "$tldr_tmpfile" >> "$tmpfile"
-      found=1
-      echo -e "\n---\n" >> "$tmpfile"
-    else
-      # Remove the TLDR header if no content was added
-      sed -i '/^## TLDR PAGE$/,+1d' "$tmpfile"
-    fi
-
-    # Clean up tldr temporary file
-    rm -f "$tldr_tmpfile"
-  fi
-
-  # Display the content using less -R to preserve colors
-  if ((found==1)); then
-    command less -FXR "$tmpfile"
-    rm -f "$tmpfile"
-    return 0
-  fi
-
-  rm -f "$tmpfile"
-
-  die 1 "'$cmd' not found."
-}
-
 main() {
-  local -- opts='' cmd
-  local -i do_man=1 do_help=1 do_info=1 do_cmdhelp=1 do_all=0
+  local -- cmd='' pagebreak=''
 
-  # Check if tldr is available at startup
-  if command -v tldr >/dev/null 2>&1; then
-    HAVE_TLDR=1
-  fi
-
-  (($#)) || >&2 usage 1
+  (( $# )) || >&2 usage 1
 
   while (($#)); do
     case $1 in
-      -m|--man)       do_man=1; do_help=0; do_info=0; do_cmdhelp=0 ;;
-      -H|--Help)      do_man=0; do_help=1; do_info=0; do_cmdhelp=0 ;;
-      -i|--info)      do_man=0; do_help=0; do_info=1; do_cmdhelp=0 ;;
-      -c|--cmd-help)  do_man=0; do_help=0; do_info=0; do_cmdhelp=1 ;;
-      -a|--all)       do_all=1 ;;
-      -V|--version)   echo "$PRG $VERSION"; exit 0 ;;
-      -h|--help)      usage 0 ;;
-      -[mHicaVh]*)
-                      # Split combined short options like -abc into -a -b -c
-                      local chars="${1:1}" # Remove the leading dash
-                      local opts_expanded=()
-                      # Loop through each character and create separate options
-                      for ((i=0; i<${#chars}; i++)); do
-                        opts_expanded+=("-${chars:$i:1}")
-                      done
-                      # Replace current arg with the expanded options
-                      set -- '' "${opts_expanded[@]}" "${@:2}" ;;
-      -*)             opts+="$1 " ;;
-      *)              process_command "$1" "$opts" "$do_help" "$do_man" "$do_info" "$do_cmdhelp" "$do_all"
-                      opts='' ;;
+      -r|--rebuild-lists)
+                  rebuild_help_lists
+                  exit 0
+                  ;;
+      -h|--help)  usage 0 ;;
+      -*)         >&2 echo "$PRG: Invalid option '$1'" ;;
+      *)          [[ -n $cmd ]] && { >&2 echo "$PRG: Too many arguments"; exit 22; }
+                  cmd="$1"
+                  ;;
     esac
     shift
   done
+
+  ( if grep -q -m1 "^${cmd}$" "$PRGDIR"/builtin.list 2>/dev/null; then
+      echo -e "# BUILTIN\n"
+      builtin help -m "$cmd" 2>/dev/null || builtin help "$cmd"
+      pagebreak="\n---\n"
+    fi
+
+    if grep -q -m1 ^"$cmd"$ "$PRGDIR"/man.list 2>/dev/null; then
+      echo -e "$pagebreak# MAN"
+      /usr/bin/man "$cmd" 2>/dev/null
+      pagebreak="\n---\n"
+    fi
+
+    if grep -q -m1 ^"$cmd"$ "$PRGDIR"/info.list 2>/dev/null; then
+      echo -e "$pagebreak# INFO"
+      /usr/bin/info "$cmd" 2>/dev/null
+      pagebreak="\n---\n"
+    fi
+
+    if [[ -n $TLDR ]]; then
+      if grep -q -m1 ^"$cmd"$ "$PRGDIR"/tldr.list 2>/dev/null; then
+        echo -e "$pagebreak# TLDR\n"
+        "$TLDR" -m "$cmd" 2>/dev/null | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'
+        pagebreak="\n---\n"
+      fi
+    fi
+
+    if [[ -z $pagebreak ]]; then
+      echo "No help information found for '$cmd'"
+    fi
+
+  ) | $MD2ANSI | less -RFSX
+
+}
+
+rebuild_help_lists() {
+  echo "Update RTFM Help File Lists"
+  echo
+
+#  echo "Updating bash builtin command list"
+#  builtin help -s | awk '{if(NR>1)print $1}' \
+#      | sort -u \
+#      | grep -v ^$ \
+#    >"$PRGDIR"/builtin.list || true
+
+  if [[ -n $TLDR ]]; then
+    echo "Updating tldr command list"
+    find "$HOME"/.local/share/tldr/pages.en/common -type f -exec basename -s '.md' {} \; 2>/dev/null \
+        | sort -u \
+        | grep -v ^$ \
+      >"$PRGDIR"/tldr.list || true
+  else
+    >&2 echo "$PRG: tldr not installed on this machine"
+  fi
+
+  echo "Updating man command list"
+  find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \
+      | sort -u \
+      | grep -v ^$ \
+    >"$PRGDIR"/man.list || true
+
+  echo "Updating info command list"
+  find /usr/share/info /usr/local/share/info -type f -name "*.info*" 2>/dev/null \
+      | sed 's/\.info.*$//' | sed 's/.*\///' \
+      | sort -u \
+      | grep -v ^$ \
+    >"$PRGDIR"/info.list || true
+  echo
+  true
 }
 
 main "$@"

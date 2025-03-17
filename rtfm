@@ -114,7 +114,7 @@ main() {
 }
 
 rebuild_help_lists() {
-  echo "Update RTFM Help File Lists"
+  echo "$PRG: Update RTFM Help File Lists"
   echo
 
   # Note: builtin.list is pre-populated with a comprehensive list
@@ -127,7 +127,7 @@ rebuild_help_lists() {
   #   >"$PRGDIR"/builtin.list || true
 
   if [[ -n $TLDR ]]; then
-    echo "Updating tldr command list"
+    echo "$PRG: Updating tldr command list"
     find "$HOME"/.local/share/tldr/pages.en/common -type f -exec basename -s '.md' {} \; 2>/dev/null \
         | sort -u \
         | grep -v ^$ \
@@ -136,13 +136,13 @@ rebuild_help_lists() {
     >&2 echo "$PRG: tldr not installed on this machine"
   fi
 
-  echo "Updating man command list"
+  echo "$PRG: Updating man command list"
   find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \
       | sort -u \
       | grep -v ^$ \
     >"$PRGDIR"/man.list || true
 
-  echo "Updating info command list"
+  echo "$PRG: Updating info command list"
   find /usr/share/info /usr/local/share/info -type f -name "*.info*" 2>/dev/null \
       | sed 's/\.info.*$//' | sed 's/.*\///' \
       | sort -u \
@@ -185,6 +185,9 @@ install_update_rtfm() {
       echo
     fi
   done
+
+  rebuild_help_lists
+
   echo "$PRG: $installupdate complete"
   exit 0
 }

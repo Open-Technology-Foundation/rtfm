@@ -58,6 +58,14 @@ main() {
                   exit 0
                   ;;
       -h|--help)  usage 0 ;;
+      --install|--update)
+                  sudo -ln &>/dev/null || {
+                     >&2 echo "$PRG: Install/Update requires root, or non-interactive sudo privileges."
+                     exit 1
+                  }
+                  sudo -n "$0" installupdate --verbose
+                  exit 1
+                  ;;
       -*)         >&2 echo "$PRG: Invalid option '$1'" ;;
       *)          [[ -n $cmd ]] && { >&2 echo "$PRG: Too many arguments"; exit 22; }
                   cmd="$1"
@@ -135,6 +143,48 @@ rebuild_help_lists() {
   echo
   true
 }
+
+install_update_rtfm() {
+  local -i VERBOSE=0
+  [[ ${1:-} == '--verbose' ]] && VERBOSE=1
+
+  local -- REPOBASE BASEDIR repo installupdate='Installing'
+
+  [[ -x /usr/local/share/rtfm ]] && installupdate='Updating'
+
+  REPOBASE=https://github.com/Open-Technology-Foundation
+  for repo in tldr md2ansi rtfm; do
+    ((VERBOSE)) && echo "$PRG: $installupdate $repo from Open Technology Foundation"
+    BASEDIR=/usr/local/share/"$repo"
+    rm -rf ."$BASEDIR"
+    git clone -q "$REPOBASE"/"$repo" ."$BASEDIR"
+    if [[ -d "$BASEDIR" ]]; then
+      rm -rf "$BASEDIR".bak
+      mv "$BASEDIR" "$BASEDIR".bak
+    fi
+    mv ".$BASEDIR" "$BASEDIR"
+    rm -rf "$BASEDIR".bak
+
+    if [[ $repo == rtfm ]]; then
+      ln -fs "$BASEDIR"/rtfm /usr/local/bin/rtfm
+    elif [[ $repo == md2ansi ]]; then
+      ln -fs "$BASEDIR"/md2ansi /usr/local/bin/md2ansi
+      ln -fs "$BASEDIR"/md /usr/local/bin/md
+    fi
+
+    if ((VERBOSE)); then
+      ls -l "$BASEDIR"* -d
+    fi
+  done
+}
+
+# catch install/update command
+if ((EUID==0)); then
+  if [[ "${1:-}" == installupdate ]]; then
+    install_update_rtfm "${@:2}"
+    exit
+  fi
+fi
 
 main "$@"
 

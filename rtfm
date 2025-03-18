@@ -153,9 +153,15 @@ install_update_rtfm() {
   local -i VERBOSE=0
   [[ ${1:-} == '--verbose' ]] && VERBOSE=1
 
+  command -v git 2>/dev/null || {
+    echo "$PRG: Installing git..."
+    /usr/bin/apt -qq update || true
+    /usr/bin/apt -qq install git
+  }
+
   local -- REPOBASE BASEDIR repo installupdate='Installing'
 
-  [[ -f /usr/local/share/rtfm ]] && installupdate='Updating'
+  [[ -f /usr/local/share/rtfm/rtfm ]] && installupdate='Updating'
 
   REPOBASE=https://github.com/Open-Technology-Foundation
   for repo in tldr md2ansi rtfm; do

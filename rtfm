@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 declare -- PRG0 PRGDIR PRG
+
 PRG0="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"
 PRGDIR="${PRG0%/*}"
 PRG="${PRG0##*/}"

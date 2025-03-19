@@ -9,9 +9,7 @@ PRG="${PRG0##*/}"
 [[ -z "${COLUMNS:-}" ]] && COLUMNS=$(tput cols 2>/dev/null || echo 80)
 export COLUMNS
 
-declare -- TLDR MD2ANSI
-# tldr optional, but recommended
-TLDR=$(command -v tldr 2>/dev/null)
+declare -- MD2ANSI
 # md2ansi optional, but recommended
 MD2ANSI=$(command -v md2ansi 2>/dev/null || echo 'cat -s -')
 
@@ -96,13 +94,11 @@ main() {
       pagebreak="\n---\n"
     fi
 
-    if [[ -n $TLDR ]]; then
-      readarray -t files < <(find "$TLDR_BASEDIR"/pages/common "$TLDR_BASEDIR"/pages/linux -type f -name "$cmd".md 2>/dev/null)
-      if ((${#files[@]})); then
-        echo -e "$pagebreak# TLDR\n"
-        cat -s -- "${files[0]}" | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'
-        pagebreak="\n---\n"
-      fi
+    readarray -t files < <(find "$TLDR_BASEDIR"/pages/common "$TLDR_BASEDIR"/pages/linux -type f -name "$cmd".md 2>/dev/null)
+    if ((${#files[@]})); then
+      echo -e "$pagebreak# TLDR\n"
+      cat -s -- "${files[0]}" | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'
+      pagebreak="\n---\n"
     fi
 
     if [[ -z $pagebreak ]]; then
@@ -123,15 +119,11 @@ rebuild_help_lists() {
   #     | grep -v ^$ \
   #   >"$PRGDIR"/builtin.list || true
 
-  if [[ -n $TLDR ]]; then
-    echo "$PRG: Updating tldr command list"
-    find "$HOME"/.local/share/tldr/pages.en/common -type f -exec basename -s '.md' {} \; 2>/dev/null \
-        | sort -u \
-        | grep -v ^$ \
-      >"$PRGDIR"/tldr.list || true
-  else
-    >&2 echo "$PRG: tldr not installed on this machine"
-  fi
+  echo "$PRG: Updating tldr command list"
+  find "$HOME"/.local/share/tldr/pages.en/common -type f -exec basename -s '.md' {} \; 2>/dev/null \
+      | sort -u \
+      | grep -v ^$ \
+    >"$PRGDIR"/tldr.list || true
 
   echo "$PRG: Updating man command list"
   find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \

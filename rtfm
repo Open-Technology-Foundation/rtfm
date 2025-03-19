@@ -68,7 +68,10 @@ main() {
                  >&2 echo "$PRG: Install/Update requires root, or non-interactive sudo privileges."
                  exit 1
               }
-              sudo -n "$0" installupdate --verbose; exit
+              sudo -n "$0" installupdate; exit
+              ;;
+      -q|--quiet)
+              VERBOSE=0
               ;;
       help|-h|--help)
               usage 0 ;;
@@ -149,8 +152,6 @@ rebuild_help_lists() {
 }
 
 install_update_rtfm() {
-  [[ ${1:-} == '--verbose' ]] && VERBOSE=1
-
   if ! command -v git >/dev/null; then
     ((VERBOSE)) && echo "$PRG: Installing git..."
     /usr/bin/apt-get -qq update || true

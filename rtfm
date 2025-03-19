@@ -137,7 +137,6 @@ rebuild_help_lists() {
       | sort -u \
       | grep -v ^$ \
     >"$PRGDIR"/info.list || true
-  echo
   true
 }
 

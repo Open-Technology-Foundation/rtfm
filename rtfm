@@ -68,7 +68,7 @@ main() {
                  >&2 echo "$PRG: Install/Update requires root, or non-interactive sudo privileges."
                  exit 1
               }
-              sudo -n "$0" installupdate; exit
+              sudo -n "$0" $( ((VERBOSE)) || echo '--quiet' ) installupdate ; exit
               ;;
       -q|--quiet)
               VERBOSE=0

@@ -149,7 +149,7 @@ install_update_rtfm() {
   local -i VERBOSE=0
   [[ ${1:-} == '--verbose' ]] && VERBOSE=1
 
-  if command -v git >/dev/null; then
+  if ! command -v git >/dev/null; then
     echo "$PRG: Installing git..."
     /usr/bin/apt -qq update || true
     /usr/bin/apt -qq install git

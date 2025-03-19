@@ -11,7 +11,7 @@ export COLUMNS
 
 declare -- MD2ANSI
 # md2ansi optional, but recommended
-MD2ANSI=$(command -v md2ansi 2>/dev/null || echo 'cat -s -')
+MD2ANSI=$(command -v md2ansi >/dev/null || echo 'cat -s -')
 
 declare -- TLDR_BASEDIR=/usr/local/share/tldr
 
@@ -145,7 +145,7 @@ install_update_rtfm() {
   local -i VERBOSE=0
   [[ ${1:-} == '--verbose' ]] && VERBOSE=1
 
-  command -v git 2>/dev/null || {
+  command -v git >/dev/null || {
     echo "$PRG: Installing git..."
     /usr/bin/apt -qq update || true
     /usr/bin/apt -qq install git
@@ -173,11 +173,6 @@ install_update_rtfm() {
     elif [[ $repo == md2ansi ]]; then
       /usr/bin/ln -fs "$BASEDIR"/md2ansi /usr/local/bin/md2ansi
       /usr/bin/ln -fs "$BASEDIR"/md /usr/local/bin/md
-    fi
-
-    if ((VERBOSE)); then
-      /usr/bin/ls -lh "$BASEDIR"* /usr/local/bin/"$repo" -d || true
-      echo
     fi
   done
 

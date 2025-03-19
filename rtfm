@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 declare -- PRG0 PRGDIR PRG
-PRG0="$(readlink -en -- "$0")"
+PRG0="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"
 PRGDIR="${PRG0%/*}"
 PRG="${PRG0##*/}"
 
@@ -118,18 +118,21 @@ rebuild_help_lists() {
   #     | sort -u \
   #     | grep -v ^$ \
   #   >"$PRGDIR"/builtin.list || true
+  # chmod 664 "$PRGDIR"/builtin.list
 
   echo "$PRG: Updating tldr command list"
   find "$HOME"/.local/share/tldr/pages.en/common -type f -exec basename -s '.md' {} \; 2>/dev/null \
       | sort -u \
       | grep -v ^$ \
     >"$PRGDIR"/tldr.list || true
+   chmod 664 "$PRGDIR"/tldr.list
 
   echo "$PRG: Updating man command list"
   find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \
       | sort -u \
       | grep -v ^$ \
     >"$PRGDIR"/man.list || true
+   chmod 664 "$PRGDIR"/man.list
 
   echo "$PRG: Updating info command list"
   find /usr/share/info /usr/local/share/info -type f -name "*.info*" 2>/dev/null \
@@ -137,6 +140,7 @@ rebuild_help_lists() {
       | sort -u \
       | grep -v ^$ \
     >"$PRGDIR"/info.list || true
+   chmod 664 "$PRGDIR"/info.list
   true
 }
 
@@ -155,6 +159,7 @@ install_update_rtfm() {
   [[ -f /usr/local/share/rtfm/rtfm ]] && installupdate='Updating'
 
   REPOBASE=https://github.com/Open-Technology-Foundation
+
   for repo in tldr md2ansi rtfm; do
     ((VERBOSE)) && echo "$PRG: $installupdate $repo from $REPOBASE"
     BASEDIR=/usr/local/share/"$repo"
@@ -166,10 +171,13 @@ install_update_rtfm() {
     fi
     mv "$BASEDIR".tmp "$BASEDIR"
     rm -rf "$BASEDIR".bak
+    chmod 775 "$BASEDIR"
 
     if [[ $repo == rtfm ]]; then
+      chmod 775 "$BASEDIR"/rtfm
       /usr/bin/ln -fs "$BASEDIR"/rtfm /usr/local/bin/rtfm
     elif [[ $repo == md2ansi ]]; then
+      chmod 775 "$BASEDIR"/md2ansi "$BASEDIR"/md
       /usr/bin/ln -fs "$BASEDIR"/md2ansi /usr/local/bin/md2ansi
       /usr/bin/ln -fs "$BASEDIR"/md /usr/local/bin/md
     fi

@@ -68,6 +68,7 @@ main() {
       --install|--update)
           can_sudo "$PRG" || exit 1
           local -- install_rtfm=/tmp/install_update_rtfm.sh
+          sudo rm -f "$install_rtfm"
           {  echo '#!/usr/bin/env bash'
              echo 'set -euo pipefail'
              declare -p PRG VERBOSE
@@ -75,7 +76,7 @@ main() {
              echo "can_sudo '$PRG' || exit 1"
              echo 'install_update_rtfm'
           } >"$install_rtfm"
-          chmod 700 "$install_rtfm"; chown root:root "$install_rtfm"
+          sudo chmod 700 "$install_rtfm"; sudo chown root:root "$install_rtfm"
           exec sudo "$install_rtfm"; exit 1
           ;;
       -q|--quiet)

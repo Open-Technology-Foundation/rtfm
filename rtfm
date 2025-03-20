@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-declare -- PRG0 PRGDIR PRG
+declare -- PRG0 PRGDIR PRG VERSION
 PRG0="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"
 PRGDIR="${PRG0%/*}"
 PRG="${PRG0##*/}"
+VERSION='1.0.1'
 
 declare -i VERBOSE=1
 
@@ -39,12 +40,15 @@ Options:
   -r,--rebuild-lists  Rebuild command lists from each help source
   --install,--update  Install or update rtfm, md2ansi, and tldr
                       from GitHub (requires git)
+  -v,--verbose        Verbose output during operations (default)
   -q,--quiet          Suppress verbose output during operations
+  -V,--version        Print version ($VERSION)
   -h,--help           This help
 
 Examples:
   $PRG rsync
   $PRG declare
+  $PRG coreutils
   $PRG find
   $PRG git
 EOT
@@ -63,7 +67,7 @@ main() {
           can_sudo "$PRG" || exit 1
           rebuild_help_lists
           exit 0
-              ;;
+          ;;
       --install|--update)
           can_sudo "$PRG" || exit 1
           local -- install_rtfm=/tmp/install_update_rtfm.sh
@@ -78,13 +82,24 @@ main() {
           sudo chmod 700 "$install_rtfm"; sudo chown root:root "$install_rtfm"
           exec sudo "$install_rtfm"; exit 1
           ;;
+      -v|--verbose)
+          VERBOSE=1 ;;
       -q|--quiet)
-          VERBOSE=0
-          ;;
-      help|-h|--help)
+          VERBOSE=0 ;;
+      -h|--help)
           usage 0 ;;
-      -*) >&2 echo "$PRG: Invalid option '$1'" ;;
-      *)  [[ -n $cmd ]] && { >&2 echo "$PRG: Too many arguments"; exit 22; }
+      -V|--version)
+          echo "$PRG $VERSION"; exit 0 ;;
+
+      -[rvqhV]*) #shellcheck disable=SC2046 #split up single options
+          set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}"
+          ;;
+
+      -*) >&2 echo "$PRG: Invalid option '$1'"; exit 22 ;;
+
+      *)  [[ -n $cmd ]] && {
+            >&2 echo "$PRG: Too many arguments"; exit 22;
+          }
           cmd="$1"
           ;;
     esac

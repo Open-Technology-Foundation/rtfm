@@ -57,8 +57,10 @@ Options:
   -r,--rebuild-lists  Rebuild command lists for each help source
   --install,--update  Install or update rtfm, md2ansi, and tldr
                       from GitHub
+  -v,--verbose        Verbose output during operations (default)
   -q,--quiet          Suppress verbose output during install and
                       update operations
+  -V,--version        Print version ($VERSION)
   -h,--help           Display this help
 
 Examples:

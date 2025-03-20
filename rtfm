@@ -8,12 +8,14 @@ PRG="${PRG0##*/}"
 declare -i VERBOSE=1
 
 # Initialize COLUMNS for md2ansi if not already set
-[[ -z "${COLUMNS:-}" ]] && COLUMNS=$(tput cols 2>/dev/null || echo 80)
-export COLUMNS
+[[ -z "${COLUMNS:-}" ]] && COLUMNS=$(tput cols 2>/dev/null || echo 78)
+declare -x COLUMNS
 
 declare -- MD2ANSI
-# md2ansi optional, but recommended
 MD2ANSI=$(command -v md2ansi || echo 'cat -s -')
+
+declare -- LESSx
+LESSx=$(command -v less)
 
 declare -- TLDR_BASEDIR=/usr/local/share/tldr
 
@@ -59,22 +61,21 @@ main() {
   while (($#)); do
     case $1 in
       -r|--rebuild-lists)
+          can_sudo "$PRG" || exit 1
           rebuild_help_lists
           exit 0
               ;;
       --install|--update)
-          sudo -ln &>/dev/null || {
-             >&2 echo "$PRG: Install/Update requires root, or non-interactive sudo privileges."
-             exit 1
-          }
+          can_sudo "$PRG" || exit 1
           local -- install_rtfm=/tmp/install_update_rtfm.sh
-          {  echo '#!/bin/bash'
+          {  echo '#!/usr/bin/env bash'
              echo 'set -euo pipefail'
-             declare -p PRGDIR PRG VERBOSE
-             declare -pf install_update_rtfm rebuild_help_lists
+             declare -p PRG VERBOSE
+             declare -pf install_update_rtfm rebuild_help_lists can_sudo
+             echo "can_sudo '$PRG' || exit 1"
              echo 'install_update_rtfm'
           } >"$install_rtfm"
-          chmod 700 "$install_rtfm"
+          chmod 700 "$install_rtfm"; chown root:root "$install_rtfm"
           exec sudo "$install_rtfm"; exit 1
           ;;
       -q|--quiet)
@@ -119,43 +120,31 @@ main() {
       echo "No help found for '$cmd'"
     fi
 
-  ) | "$MD2ANSI" | less -RFSX
+  ) | $MD2ANSI | "$LESSx" -RFSX
 
 }
 
 rebuild_help_lists() {
-  # Note: builtin.list is pre-populated with a comprehensive list
-  # Uncomment below to regenerate from scratch (not recommended)
-  #
-  # echo "Updating bash builtin command list"
-  # builtin help -s | awk '{if(NR>1)print $1}' \
-  #     | sort -u \
-  #     | grep -v ^$ \
-  #   >"$PRGDIR"/builtin.list || true
-  # chmod 664 "$PRGDIR"/builtin.list
+  sudo mkdir -m 755 -p /usr/local/share/rtfm
 
   ((VERBOSE)) && echo "$PRG: Updating 'tldr' command list"
-  find /usr/local/share/tldr -type f -exec basename -s '.md' {} \; 2>/dev/null \
-      | sort -u \
-      | grep -v ^$ \
-    >"$PRGDIR"/tldr.list || true
-   chmod 664 "$PRGDIR"/tldr.list
+  sudo find /usr/local/share/tldr -type f -exec basename -s '.md' {} \; 2>/dev/null \
+      | sort -u | grep -v ^$ \
+    >/usr/local/share/rtfm/tldr.list || true
 
   ((VERBOSE)) && echo "$PRG: Updating 'man' command list"
-  find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \
-      | sort -u \
-      | grep -v ^$ \
-    >"$PRGDIR"/man.list || true
-   chmod 664 "$PRGDIR"/man.list
+  sudo find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \
+      | sort -u | grep -v ^$ \
+    >/usr/local/share/rtfm/man.list || true
 
   ((VERBOSE)) && echo "$PRG: Updating 'info' command list"
-  find /usr/share/info /usr/local/share/info -type f -name "*.info*" 2>/dev/null \
+  sudo find /usr/share/info /usr/local/share/info -type f -name "*.info*" 2>/dev/null \
       | sed 's/\.info.*$//' | sed 's/.*\///' \
-      | sort -u \
-      | grep -v ^$ \
-    >"$PRGDIR"/info.list || true
-   chmod 664 "$PRGDIR"/info.list
-  true
+      | sort -u | grep -v ^$ \
+    >/usr/local/share/rtfm/info.list || true
+
+  sudo chmod 644 /usr/local/share/rtfm/info.list /usr/local/share/rtfm/tldr.list /usr/local/share/rtfm/man.list
+  return 0
 }
 
 install_update_rtfm() {
@@ -182,13 +171,13 @@ install_update_rtfm() {
     fi
     mv "$BASEDIR".tmp "$BASEDIR"
     rm -rf "$BASEDIR".bak
-    chmod 775 "$BASEDIR"
+    chmod 755 "$BASEDIR"
 
     if [[ $repo == rtfm ]]; then
-      chmod 775 "$BASEDIR"/rtfm
+      chmod 755 "$BASEDIR"/rtfm
       /usr/bin/ln -fs "$BASEDIR"/rtfm /usr/local/bin/rtfm
     elif [[ $repo == md2ansi ]]; then
-      chmod 775 "$BASEDIR"/md2ansi "$BASEDIR"/md
+      chmod 755 "$BASEDIR"/md2ansi "$BASEDIR"/md
       /usr/bin/ln -fs "$BASEDIR"/md2ansi /usr/local/bin/md2ansi
       /usr/bin/ln -fs "$BASEDIR"/md /usr/local/bin/md
     fi
@@ -198,6 +187,23 @@ install_update_rtfm() {
 
   ((VERBOSE)) && echo "$PRG: $installupdate complete"
   exit 0
+}
+
+can_sudo() {
+  ((EUID)) || return 0
+  # Check if sudo exists
+  if ! command -v sudo &>/dev/null; then
+    >&2 echo "${1:-}: Error: 'sudo' command not found. This operation requires root privileges."
+    return 1
+  fi
+  # Check if user is in sudo/admin group (common sudo access indicator)
+  if ! groups | grep -qE '\b(sudo|admin|wheel)\b'; then
+    >&2 echo "${1:-}: Error: Your user account doesn't appear to have sudo privileges."
+    >&2 echo "${1:-}: This operation requires root or sudo access."
+    return 1
+  fi
+  # User has sudo command and appears to be in sudo group
+  return 0
 }
 
 main "$@"

@@ -129,7 +129,7 @@ rebuild_help_lists() {
   sudo mkdir -m 755 -p /usr/local/share/rtfm
 
   ((VERBOSE)) && echo "$PRG: Updating 'tldr' command list"
-  sudo find /usr/local/share/tldr -type f -exec basename -s '.md' {} \; 2>/dev/null \
+  sudo find /usr/local/share/tldr/pages/common/ /usr/local/share/tldr/pages/linux/ -type f -exec basename -s '.md' {} \; 2>/dev/null \
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/tldr.list || true
 

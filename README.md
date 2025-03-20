@@ -2,6 +2,12 @@
 
 A Linux command-line utility that searches for documentation about commands across multiple help systems and concatenates the results.
 
+The `rtfm` program is designed to address the problem of efficiently accessing and consolidating documentation for Linux commands from multiple help systems.
+
+Users often need to refer to various sources of documentation, such as Bash built-in help, man pages, info pages, and TLDR pages.
+
+`rtfm` searches through all these different documentation sources and combines the results, thus simplifying the process of finding relevant information about commands.
+
 ## Features
 
 - Searches for command help in the following order:
@@ -68,7 +74,8 @@ Examples:
   rtfm declare
   rtfm coreutils
   rtfm find
-  rtfm git
+  rtfm --update
+  rtfm -r
 ```
 
 rtfm searches for documentation in these list files:

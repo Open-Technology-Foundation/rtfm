@@ -50,7 +50,8 @@ Examples:
   $PRG declare
   $PRG coreutils
   $PRG find
-  $PRG git
+  $PRG --update
+  $PRG -r
 EOT
   exit "${1:-0}"
 }

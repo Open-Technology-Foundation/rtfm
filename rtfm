@@ -36,15 +36,16 @@ All found pages are concatenated.
 Usage: $PRG [OPTIONS] command
 
 Options:
-  -r,--rebuild-lists  Rebuild command lists for each help command
+  -r,--rebuild-lists  Rebuild command lists from each help source
   --install,--update  Install or update rtfm, md2ansi, and tldr
                       from GitHub (requires git)
+  -q,--quiet          Suppress verbose output during operations
   -h,--help           This help
 
 Examples:
   $PRG rsync
   $PRG declare
-  $PRG ls
+  $PRG find
   $PRG git
 EOT
   exit "${1:-0}"

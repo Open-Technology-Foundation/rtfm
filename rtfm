@@ -17,8 +17,6 @@ MD2ANSI=$(command -v md2ansi || echo 'cat -s -')
 declare -- LESSx
 LESSx=$(command -v less)
 
-declare -- TLDR_BASEDIR=/usr/local/share/tldr
-
 usage() {
   cat <<EOT
 $PRG - Read The Fucking Manuals
@@ -110,7 +108,7 @@ main() {
       pagebreak="\n---\n"
     fi
 
-    readarray -t files < <(find "$TLDR_BASEDIR"/pages/common "$TLDR_BASEDIR"/pages/linux -type f -name "$cmd".md 2>/dev/null)
+    readarray -t files < <(find /usr/local/share/tldr/pages/common /usr/local/share/tldr/pages/linux -type f -name "$cmd".md 2>/dev/null)
     if ((${#files[@]})); then
       echo -e "$pagebreak# TLDR\n"
       cat -s -- "${files[0]}" | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'

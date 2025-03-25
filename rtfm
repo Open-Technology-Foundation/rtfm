@@ -99,7 +99,7 @@ main() {
       -*) >&2 echo "$PRG: Invalid option '$1'"; exit 22 ;;
 
       *)  [[ -n $cmd ]] && {
-            >&2 echo "$PRG: Too many arguments"; exit 22;
+            >&2 echo "$PRG: Too many arguments"; exit 2;
           }
           cmd="$1"
           ;;

@@ -19,6 +19,7 @@ Users often need to refer to various sources of documentation, such as Bash buil
 - Uses markdown formatting with `md2ansi` support
 - Clean pagination with `less`
 - Easy list rebuilding for keeping documentation sources up-to-date
+- **SHA256 checksum verification** for secure updates (requires `sha256sum`)
 
 ## Installation
 
@@ -86,6 +87,25 @@ rtfm searches for documentation in these list files:
 
 Run `rtfm --rebuild-lists` to generate or update these files.
 
+## Security
+
+The `rtfm` update mechanism includes SHA256 checksum verification to ensure the integrity of downloaded files. When updating, the script:
+
+1. Downloads repositories from GitHub
+2. Downloads and verifies checksums (if `sha256sum` is available)
+3. Only installs verified files
+4. Automatically rolls back on verification failure
+
+To manually verify the integrity of the installation, check the `checksums.sha256` file in the repository.
+
+### Maintaining Checksums
+
+The `checksums.sha256` file must be updated whenever tracked files change. There are three ways to ensure this:
+
+1. **Manual Update**: Run `./update-checksums.sh` before committing changes
+2. **Git Hook**: The pre-commit hook automatically updates checksums (install with `cp .git/hooks/pre-commit.example .git/hooks/pre-commit`)
+3. **GitHub Actions**: The workflow automatically updates checksums on push (requires GitHub Actions enabled)
+
 ## Dependencies
 
 - bash - For script execution
@@ -96,6 +116,7 @@ Run `rtfm --rebuild-lists` to generate or update these files.
 - tldr - For simplified command documentation with examples\*
 - md2ansi - For better formatted output\*
 - git - For installation and update operations\*
+- sha256sum - For checksum verification during updates (optional but recommended)
 
 \* Installed with --install
 

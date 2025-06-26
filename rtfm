@@ -56,6 +56,72 @@ EOT
   exit "${1:-0}"
 }
 
+validate_command_name() {
+  # Validate command name for security
+  local -- cmd="$1"
+  
+  # Check if command is empty
+  if [[ -z "$cmd" ]]; then
+    >&2 echo "$PRG: Error: Command name cannot be empty"
+    return 1
+  fi
+  
+  # Check length (reasonable limit)
+  if (( ${#cmd} > 64 )); then
+    >&2 echo "$PRG: Error: Command name too long (max 64 characters)"
+    return 1
+  fi
+  
+  # Whitelist: Allow only alphanumeric, dash, underscore, dot, and plus
+  # This covers valid command names like: ls, git-status, python3.9, g++
+  if [[ ! "$cmd" =~ ^[a-zA-Z0-9._+-]+$ ]]; then
+    >&2 echo "$PRG: Error: Invalid command name. Only alphanumeric characters, dash, underscore, dot, and plus are allowed"
+    return 1
+  fi
+  
+  # Reject if starts with dash (could be interpreted as option)
+  if [[ "$cmd" =~ ^- ]]; then
+    >&2 echo "$PRG: Error: Command name cannot start with a dash"
+    return 1
+  fi
+  
+  # Reject known shell metacharacters and dangerous patterns
+  local -- dangerous_patterns=(
+    '..' # Directory traversal
+    '/' # Path separator
+    $'\\' # Escape character
+    '$' # Variable expansion
+    '`' # Command substitution
+    ';' # Command separator
+    '&' # Background execution
+    '|' # Pipe
+    '>' # Redirect
+    '<' # Redirect
+    '(' # Subshell
+    ')' # Subshell
+    '{' # Brace expansion
+    '}' # Brace expansion
+    '[' # Glob/test
+    ']' # Glob/test
+    '*' # Glob
+    '?' # Glob
+    '!' # History expansion
+    '~' # Home directory
+    '"' # Quote
+    "'" # Quote
+  )
+  
+  local -- pattern
+  for pattern in "${dangerous_patterns[@]}"; do
+    if [[ "$cmd" == *"$pattern"* ]]; then
+      >&2 echo "$PRG: Error: Command name contains forbidden character or pattern: $pattern"
+      return 1
+    fi
+  done
+  
+  return 0
+}
+
 main() {
   local -- cmd='' pagebreak=''
   local -a files=()
@@ -102,10 +168,20 @@ main() {
             >&2 echo "$PRG: Too many arguments"; exit 2;
           }
           cmd="$1"
+          # Validate command name for security
+          if ! validate_command_name "$cmd"; then
+            exit 22
+          fi
           ;;
     esac
     shift
   done
+  
+  # Ensure command is specified
+  if [[ -z "$cmd" ]]; then
+    >&2 echo "$PRG: Error: No command specified"
+    >&2 usage 1
+  fi
 
   ( if grep -q -m1 "^${cmd}$" "$PRGDIR"/builtin.list 2>/dev/null; then
       echo -e "# BUILTIN\n"
@@ -163,11 +239,101 @@ rebuild_help_lists() {
   return 0
 }
 
+calculate_checksum() {
+  # Calculate SHA256 checksum of a file
+  local -- file="$1"
+  if [[ ! -f "$file" ]]; then
+    >&2 echo "$PRG: Error: File not found: $file"
+    return 1
+  fi
+  sha256sum "$file" 2>/dev/null | cut -d' ' -f1
+}
+
+verify_checksum() {
+  # Verify file against expected SHA256 hash
+  local -- file="$1" expected_hash="$2"
+  local -- actual_hash
+  
+  if [[ ! -f "$file" ]]; then
+    >&2 echo "$PRG: Error: File not found for verification: $file"
+    return 1
+  fi
+  
+  actual_hash=$(calculate_checksum "$file")
+  if [[ -z "$actual_hash" ]]; then
+    >&2 echo "$PRG: Error: Could not calculate checksum for $file"
+    return 1
+  fi
+  
+  [[ "$actual_hash" == "$expected_hash" ]]
+}
+
+download_checksums() {
+  # Download checksums file from repository
+  local -- repo="$1" basedir="$2"
+  local -- checksum_url="$REPOBASE/$repo/raw/main/checksums.sha256"
+  
+  ((VERBOSE)) && echo "$PRG: Downloading checksums for $repo"
+  
+  # Use curl if available, fallback to wget
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$checksum_url" -o "$basedir/checksums.sha256" 2>/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$checksum_url" -O "$basedir/checksums.sha256" 2>/dev/null
+  else
+    >&2 echo "$PRG: Error: Neither curl nor wget found for downloading checksums"
+    return 1
+  fi
+}
+
+verify_repo_integrity() {
+  # Verify repository files against checksums
+  local -- repo="$1" basedir="$2"
+  local -- checksum_file="$basedir/checksums.sha256"
+  local -- hash filename
+  local -i verification_failed=0
+  
+  if [[ ! -f "$checksum_file" ]]; then
+    >&2 echo "$PRG: Warning: No checksum file found for $repo, skipping verification"
+    return 0  # Allow installation without checksums for backward compatibility
+  fi
+  
+  ((VERBOSE)) && echo "$PRG: Verifying integrity of $repo"
+  
+  # Read checksums and verify each file
+  while IFS='  ' read -r hash filename; do
+    # Skip empty lines and comments
+    [[ -z "$hash" || "$hash" =~ ^# ]] && continue
+    
+    # Skip files that are in .gitignore (like CLAUDE.md)
+    [[ "$filename" == "CLAUDE.md" ]] && continue
+    
+    if [[ -f "$basedir/$filename" ]]; then
+      if verify_checksum "$basedir/$filename" "$hash"; then
+        ((VERBOSE)) && echo "$PRG: ✓ Verified $filename"
+      else
+        >&2 echo "$PRG: ✗ Checksum verification failed for $filename"
+        verification_failed=1
+      fi
+    else
+      # Only warn for missing optional files
+      ((VERBOSE)) && echo "$PRG: Warning: File not found in download: $filename"
+    fi
+  done < "$checksum_file"
+  
+  return $verification_failed
+}
+
 install_update_rtfm() {
   if ! command -v git >/dev/null; then
     ((VERBOSE)) && echo "$PRG: Installing git..."
     /usr/bin/apt-get -qq update || true
     /usr/bin/apt-get -qq install git || true
+  fi
+  
+  # Check for sha256sum
+  if ! command -v sha256sum >/dev/null; then
+    >&2 echo "$PRG: Warning: sha256sum not found, checksum verification will be skipped"
   fi
 
   # already installed?
@@ -176,19 +342,55 @@ install_update_rtfm() {
 
   local -- REPOBASE=https://github.com/Open-Technology-Foundation
   local -- BASEDIR repo
+  local -i update_failed=0
+  
   for repo in tldr md2ansi rtfm; do
     ((VERBOSE)) && echo "$PRG: $installupdate $REPOBASE/$repo"
     BASEDIR=/usr/local/share/"$repo"
+    
+    # Clean up any previous temp directory
     rm -rf "$BASEDIR".tmp
-    /usr/bin/git clone -q "$REPOBASE"/"$repo" "$BASEDIR".tmp
+    
+    # Clone repository to temp location
+    if ! /usr/bin/git clone -q "$REPOBASE"/"$repo" "$BASEDIR".tmp; then
+      >&2 echo "$PRG: Error: Failed to clone $repo"
+      update_failed=1
+      continue
+    fi
+    
+    # Download and verify checksums if sha256sum is available
+    if command -v sha256sum >/dev/null; then
+      download_checksums "$repo" "$BASEDIR.tmp" || true
+      
+      # Verify repository integrity
+      if ! verify_repo_integrity "$repo" "$BASEDIR.tmp"; then
+        >&2 echo "$PRG: Error: Checksum verification failed for $repo"
+        rm -rf "$BASEDIR".tmp
+        update_failed=1
+        continue
+      fi
+    fi
+    
+    # Backup existing installation if present
     if [[ -d "$BASEDIR" ]]; then
       rm -rf "$BASEDIR".bak
       mv "$BASEDIR" "$BASEDIR".bak
     fi
-    mv "$BASEDIR".tmp "$BASEDIR"
+    
+    # Move verified repository to final location
+    if ! mv "$BASEDIR".tmp "$BASEDIR"; then
+      >&2 echo "$PRG: Error: Failed to install $repo"
+      # Restore backup if move failed
+      [[ -d "$BASEDIR".bak ]] && mv "$BASEDIR".bak "$BASEDIR"
+      update_failed=1
+      continue
+    fi
+    
+    # Clean up backup on successful installation
     rm -rf "$BASEDIR".bak
     chmod 755 "$BASEDIR"
 
+    # Set up symlinks for executables
     if [[ $repo == rtfm ]]; then
       chmod 755 "$BASEDIR"/rtfm
       /usr/bin/ln -fs "$BASEDIR"/rtfm /usr/local/bin/rtfm
@@ -198,6 +400,12 @@ install_update_rtfm() {
       /usr/bin/ln -fs "$BASEDIR"/md /usr/local/bin/md
     fi
   done
+  
+  # Only rebuild lists if rtfm was successfully updated
+  if [[ ! -d /usr/local/share/rtfm ]] || ((update_failed)); then
+    >&2 echo "$PRG: Error: Update failed for one or more components"
+    exit 1
+  fi
 
   rebuild_help_lists
 

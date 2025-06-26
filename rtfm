@@ -132,6 +132,11 @@ main() {
     case $1 in
       -r|--rebuild-lists)
           can_sudo "$PRG" || exit 1
+          # Re-execute with sudo if not already root
+          if ((EUID != 0)); then
+            echo "$PRG: Rebuilding lists requires sudo privileges"
+            exec sudo "$0" "$@"
+          fi
           rebuild_help_lists
           exit 0
           ;;

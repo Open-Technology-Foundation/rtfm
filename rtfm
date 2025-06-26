@@ -143,6 +143,7 @@ main() {
              echo 'set -euo pipefail'
              declare -p PRG VERBOSE
              declare -pf install_update_rtfm rebuild_help_lists can_sudo
+             declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
              echo "can_sudo '$PRG' || exit 1"
              echo 'install_update_rtfm'
           } >"$install_rtfm"
@@ -271,6 +272,7 @@ verify_checksum() {
 download_checksums() {
   # Download checksums file from repository
   local -- repo="$1" basedir="$2"
+  local -- REPOBASE="${3:-https://github.com/Open-Technology-Foundation}"
   local -- checksum_url="$REPOBASE/$repo/raw/main/checksums.sha256"
   
   ((VERBOSE)) && echo "$PRG: Downloading checksums for $repo"
@@ -360,7 +362,7 @@ install_update_rtfm() {
     
     # Download and verify checksums if sha256sum is available
     if command -v sha256sum >/dev/null; then
-      download_checksums "$repo" "$BASEDIR.tmp" || true
+      download_checksums "$repo" "$BASEDIR.tmp" "$REPOBASE" || true
       
       # Verify repository integrity
       if ! verify_repo_integrity "$repo" "$BASEDIR.tmp"; then

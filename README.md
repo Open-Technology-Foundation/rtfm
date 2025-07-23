@@ -1,125 +1,213 @@
 # rtfm - Read The Fucking Manuals
 
-A Linux command-line utility that searches for documentation about commands across multiple help systems and concatenates the results.
+A unified Linux documentation lookup tool that consolidates help information from multiple sources into a single, easy-to-use interface.
 
-The `rtfm` program is designed to address the problem of efficiently accessing and consolidating documentation for Linux commands from multiple help systems.
+## Overview
 
-Users often need to refer to various sources of documentation, such as Bash built-in help, man pages, info pages, and TLDR pages.
-
-`rtfm` searches through all these different documentation sources and combines the results, thus simplifying the process of finding relevant information about commands.
+`rtfm` solves the common problem of fragmented documentation by searching across all available help systems and presenting the results in one place. Instead of remembering whether to use `man`, `info`, `help`, or `tldr`, just use `rtfm`.
 
 ## Features
 
-- Searches for command help in the following order:
-  - Bash builtin help
-  - Man pages
-  - Info pages
-  - TLDR pages
-- **Combines results** from all available documentation sources
-- Uses markdown formatting with `md2ansi` support
-- Clean pagination with `less`
-- Easy list rebuilding for keeping documentation sources up-to-date
-- **SHA256 checksum verification** for secure updates (requires `sha256sum`)
+- **Multi-source documentation search** in order:
+  1. Bash builtin help
+  2. Man pages (from all directories in `manpath`)
+  3. Info pages
+  4. TLDR pages (simplified examples)
+  5. Command --help (for scripts without formal documentation)
+- **Smart fallback**: Automatically detects and runs `--help` for text-based scripts
+- **Fast lookups**: Pre-built indices enable O(1) performance
+- **Update detection**: Warns when new man pages are installed
+- **Secure updates**: SHA256 checksum verification
+- **Enhanced formatting**: Optional markdown rendering with `md2ansi`
+- **Clean pagination**: Integrated with `less` for easy navigation
 
 ## Installation
 
-The easiest way to install `rtfm` and dependencies is to use the built-in installer:
+### Quick Install
+
+```bash
+# One-liner installation
+wget https://raw.githubusercontent.com/Open-Technology-Foundation/rtfm/main/rtfm && chmod +x rtfm && sudo ./rtfm --install
+```
+
+### Step-by-Step Install
 
 ```bash
 # Download the script
 wget https://raw.githubusercontent.com/Open-Technology-Foundation/rtfm/main/rtfm
+
 # Make it executable
 chmod +x rtfm
-# Install rtfm, md2ansi, and tldr from GitHub
+
+# Install rtfm and dependencies
 sudo ./rtfm --install
 ```
 
-Or as a one-liner:
-
-```bash
-wget https://raw.githubusercontent.com/Open-Technology-Foundation/rtfm/main/rtfm && chmod +x rtfm && sudo ./rtfm --install
-```
-
-This will automatically install:
-- git (if not already installed)
-- rtfm (documentation lookup utility)
-- md2ansi (markdown to terminal converter for nicer formatting)
-- tldr pages (simplified command documentation and examples)
-
-### Updating
-
-To update rtfm:
-
-```bash
-# Update rtfm, md2ansi, and tldr from GitHub
-sudo rtfm --update
-```
+This installs:
+- `rtfm` to `/usr/local/share/rtfm/` with symlink in `/usr/local/bin/`
+- `md2ansi` for enhanced markdown formatting
+- `tldr` pages for simplified command examples
+- Pre-generated documentation indices for your system
 
 ## Usage
 
+### Basic Lookup
+
 ```bash
-rtfm [OPTIONS] command
-
-Options:
-  -r,--rebuild-lists  Rebuild command lists for each help source
-  --install,--update  Install or update rtfm, md2ansi, and tldr
-                      from GitHub
-  -v,--verbose        Verbose output during operations (default)
-  -q,--quiet          Suppress verbose output during install and
-                      update operations
-  -V,--version        Print version ($VERSION)
-  -h,--help           Display this help
-
-Examples:
-  rtfm rsync
-  rtfm declare
-  rtfm coreutils
-  rtfm find
-  rtfm --update
-  rtfm -r
+rtfm <command>
 ```
 
-rtfm searches for documentation in these list files:
-- builtin.list - Bash builtin commands
-- man.list - Commands with man pages
-- info.list - Commands with info pages
-- tldr.list - Commands with TLDR pages
+### Examples
 
-Run `rtfm --rebuild-lists` to generate or update these files.
+```bash
+# Look up rsync documentation (finds man page + tldr examples)
+rtfm rsync
 
-## Security
+# Get help for bash's declare builtin
+rtfm declare
 
-The `rtfm` update mechanism includes SHA256 checksum verification to ensure the integrity of downloaded files. When updating, the script:
+# View comprehensive GNU coreutils documentation
+rtfm coreutils
 
-1. Downloads repositories from GitHub
-2. Downloads and verifies checksums (if `sha256sum` is available)
-3. Only installs verified files
-4. Automatically rolls back on verification failure
+# Find all documentation for the find command
+rtfm find
 
-To manually verify the integrity of the installation, check the `checksums.sha256` file in the repository.
+# Get help for a custom script (fallback to --help)
+rtfm my-script
+```
 
-### Maintaining Checksums
+### Administrative Commands
 
-The `checksums.sha256` file must be updated whenever tracked files change. There are three ways to ensure this:
+```bash
+# Update rtfm and all dependencies
+sudo rtfm --update
 
-1. **Manual Update**: Run `./update-checksums.sh` before committing changes
-2. **Git Hook**: The pre-commit hook automatically updates checksums (install with `cp .git/hooks/pre-commit.example .git/hooks/pre-commit`)
-3. **GitHub Actions**: The workflow automatically updates checksums on push (requires GitHub Actions enabled)
+# Rebuild documentation indices after installing new packages
+sudo rtfm --rebuild-lists
+
+# View version information
+rtfm --version
+
+# Display help
+rtfm --help
+```
+
+### Options
+
+- `-r, --rebuild-lists`: Rebuild command lists from documentation sources
+- `--install, --update`: Install or update rtfm and dependencies
+- `-v, --verbose`: Verbose output (default)
+- `-q, --quiet`: Suppress verbose messages
+- `-V, --version`: Display version information
+- `-h, --help`: Show help message
+
+## How It Works
+
+### Documentation Sources
+
+rtfm searches these locations in order:
+
+1. **Bash Builtins** (`/usr/local/share/rtfm/builtin.list`)
+   - Generated from `compgen -b`
+   - Covers commands like `cd`, `alias`, `declare`, etc.
+
+2. **Man Pages** (`/usr/local/share/rtfm/man.list`)
+   - Searches all directories from `manpath`
+   - Includes both compressed (.gz) and uncompressed pages
+   - Automatically detects new installations
+
+3. **Info Pages** (`/usr/local/share/rtfm/info.list`)
+   - GNU project documentation
+   - Often more detailed than man pages
+
+4. **TLDR Pages** (`/usr/local/share/rtfm/tldr.list`)
+   - Community-maintained simplified examples
+   - Great for quick command usage references
+
+5. **Command --help** (fallback)
+   - For executable scripts without formal documentation
+   - Detects if script contains `--help` option
+   - Only runs if script is a text file (not binary)
+
+### Update Detection
+
+rtfm monitors man page directories and warns when new pages are installed:
+
+```
+rtfm: Warning: New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index.
+```
+
+This ensures your documentation index stays current without manual intervention.
+
+### Security Features
+
+- **Input validation**: Prevents command injection with strict character whitelisting
+- **SHA256 checksums**: Verifies integrity of downloaded files
+- **Automatic rollback**: Restores previous version if update fails
+- **Privilege checks**: Uses `can_sudo` to verify permissions before system changes
+
+## File Locations
+
+- **Executable**: `/usr/local/bin/rtfm` (symlink to `/usr/local/share/rtfm/rtfm`)
+- **Documentation indices**: `/usr/local/share/rtfm/*.list`
+- **TLDR pages**: `/usr/local/share/tldr/`
+- **md2ansi**: `/usr/local/share/md2ansi/`
 
 ## Dependencies
 
-- bash - For script execution
-- grep - For searching through documentation
-- less - For paginated viewing
-- man - For man page documentation
-- info - For info page documentation
-- tldr - For simplified command documentation with examples\*
-- md2ansi - For better formatted output\*
-- git - For installation and update operations\*
-- sha256sum - For checksum verification during updates (optional but recommended)
+### Required
+- **bash**: Script execution environment
+- **grep**: Searching through lists
+- **less**: Paginated viewing
+- **man**: Man page system
+- **info**: GNU info system
 
-\* Installed with --install
+### Optional (Installed Automatically)
+- **git**: For installation/updates
+- **tldr**: Simplified command examples
+- **md2ansi**: Enhanced markdown formatting
+- **sha256sum**: Checksum verification (recommended)
+- **file**: For detecting script types in --help fallback
+
+## Troubleshooting
+
+### rtfm not finding a command
+```bash
+# Rebuild the documentation indices
+sudo rtfm --rebuild-lists
+```
+
+### Installation fails
+```bash
+# Check if you have sudo access
+groups | grep -E 'sudo|admin|wheel'
+
+# Install git manually if needed
+sudo apt-get install git
+```
+
+### Checksum verification fails
+```bash
+# Install sha256sum for security
+sudo apt-get install coreutils
+
+# Or skip verification (not recommended)
+# The installer will warn but continue
+```
+
+## Contributing
+
+1. Fork the repository
+2. Make your changes
+3. Run `./update-checksums.sh` before committing
+4. Submit a pull request
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
+GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
+
+## Links
+
+- [GitHub Repository](https://github.com/Open-Technology-Foundation/rtfm)
+- [md2ansi](https://github.com/Open-Technology-Foundation/md2ansi)
+- [tldr pages](https://github.com/Open-Technology-Foundation/tldr)

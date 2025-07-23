@@ -231,7 +231,8 @@ rebuild_help_lists() {
     >/usr/local/share/rtfm/tldr.list || true
 
   ((VERBOSE)) && echo "$PRG: Updating 'man' command list"
-  sudo find /usr/share/man/man1 -type f -exec basename -s '.1.gz' {} \; 2>/dev/null \
+  sudo find /usr/share/man /usr/local/share/man -type f -name "*.[1-9]*.gz" -o -name "*.[1-9]*" 2>/dev/null \
+      | sed 's|.*/||; s/\.[1-9][a-z]*\(\.gz\)*$//' \
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/man.list || true
 

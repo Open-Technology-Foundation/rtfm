@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-declare -- PRG0 PRGDIR PRG VERSION
+declare -- PRG0 PRG VERSION
 PRG0="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"
-PRGDIR="${PRG0%/*}"
 PRG="${PRG0##*/}"
 VERSION='1.0.1'
 
@@ -122,6 +121,43 @@ validate_command_name() {
   return 0
 }
 
+get_man_paths() {
+  # Get man paths from manpath command, with fallback to common locations
+  local -a paths=()
+  local -- IFS=':'
+  
+  if command -v manpath >/dev/null 2>&1; then
+    read -ra paths <<< "$(manpath 2>/dev/null)"
+  else
+    paths=("/usr/share/man" "/usr/local/share/man" "/usr/local/man")
+  fi
+  
+  printf '%s\n' "${paths[@]}"
+}
+
+check_manpage_updates() {
+  # Check if man page directories have been updated since last list rebuild
+  local -- man_list="/usr/local/share/rtfm/man.list"
+  
+  # Skip check if man.list doesn't exist yet
+  [[ -f "$man_list" ]] || return 0
+  
+  local -- dir
+  local -a man_paths=()
+  readarray -t man_paths < <(get_man_paths)
+  
+  # Check each man directory
+  for dir in "${man_paths[@]}"; do
+    if [[ -d "$dir" ]]; then
+      # Find any man page file newer than man.list
+      if find "$dir" -type f \( -name "*.[1-9]*.gz" -o -name "*.[1-9]*" \) -newer "$man_list" -print -quit 2>/dev/null | grep -q .; then
+        >&2 echo "$PRG: Warning: New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index."
+        return 0
+      fi
+    fi
+  done
+}
+
 main() {
   local -- cmd='' pagebreak=''
   local -a files=()
@@ -189,19 +225,22 @@ main() {
     >&2 usage 1
   fi
 
-  ( if grep -q -m1 "^${cmd}$" "$PRGDIR"/builtin.list 2>/dev/null; then
+  # Check for outdated man page index
+  check_manpage_updates
+
+  ( if grep -q -m1 "^${cmd}$" /usr/local/share/rtfm/builtin.list 2>/dev/null; then
       echo -e "# BUILTIN\n"
       builtin help -m "$cmd" 2>/dev/null || builtin help "$cmd"
       pagebreak="\n---\n"
     fi
 
-    if grep -q -m1 ^"$cmd"$ "$PRGDIR"/man.list 2>/dev/null; then
+    if grep -q -m1 ^"$cmd"$ /usr/local/share/rtfm/man.list 2>/dev/null; then
       echo -e "$pagebreak# MAN"
       /usr/bin/man "$cmd" 2>/dev/null
       pagebreak="\n---\n"
     fi
 
-    if grep -q -m1 ^"$cmd"$ "$PRGDIR"/info.list 2>/dev/null; then
+    if grep -q -m1 ^"$cmd"$ /usr/local/share/rtfm/info.list 2>/dev/null; then
       echo -e "$pagebreak# INFO"
       /usr/bin/info "$cmd" 2>/dev/null
       pagebreak="\n---\n"
@@ -212,6 +251,25 @@ main() {
       echo -e "$pagebreak# TLDR\n"
       cat -s -- "${files[0]}" | sed 's/`//g' |sed 's/{{//g' |sed 's/}}//g'
       pagebreak="\n---\n"
+    fi
+
+    # Fallback: Check if command exists and has --help
+    if [[ -z $pagebreak ]] && command -v "$cmd" >/dev/null 2>&1; then
+      local -- cmd_path real_path
+      cmd_path=$(command -v "$cmd" 2>/dev/null)
+      
+      # Follow symlinks to get the real path
+      real_path=$(readlink -f "$cmd_path" 2>/dev/null || echo "$cmd_path")
+      
+      # Check if it's a text file (script)
+      if [[ -f "$real_path" ]] && file -b "$real_path" 2>/dev/null | grep -q "text"; then
+        # Check if the script contains --help
+        if grep -q -- "--help" "$real_path" 2>/dev/null; then
+          echo -e "$pagebreak# COMMAND HELP\n"
+          "$cmd" --help 2>&1 || true
+          pagebreak="\n---\n"
+        fi
+      fi
     fi
 
     if [[ -z $pagebreak ]]; then
@@ -225,13 +283,18 @@ main() {
 rebuild_help_lists() {
   sudo mkdir -m 755 -p /usr/local/share/rtfm
 
+  ((VERBOSE)) && echo "$PRG: Updating 'builtin' command list"
+  compgen -b | sort -u >/usr/local/share/rtfm/builtin.list || true
+
   ((VERBOSE)) && echo "$PRG: Updating 'tldr' command list"
   sudo find /usr/local/share/tldr/pages/common/ /usr/local/share/tldr/pages/linux/ -type f -exec basename -s '.md' {} \; 2>/dev/null \
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/tldr.list || true
 
   ((VERBOSE)) && echo "$PRG: Updating 'man' command list"
-  sudo find /usr/share/man /usr/local/share/man -type f -name "*.[1-9]*.gz" -o -name "*.[1-9]*" 2>/dev/null \
+  local -a man_paths=()
+  readarray -t man_paths < <(get_man_paths)
+  sudo find "${man_paths[@]}" -type f \( -name "*.[1-9]*.gz" -o -name "*.[1-9]*" \) 2>/dev/null \
       | sed 's|.*/||; s/\.[1-9][a-z]*\(\.gz\)*$//' \
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/man.list || true
@@ -242,7 +305,7 @@ rebuild_help_lists() {
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/info.list || true
 
-  sudo chmod 644 /usr/local/share/rtfm/info.list /usr/local/share/rtfm/tldr.list /usr/local/share/rtfm/man.list
+  sudo chmod 644 /usr/local/share/rtfm/builtin.list /usr/local/share/rtfm/info.list /usr/local/share/rtfm/tldr.list /usr/local/share/rtfm/man.list
   return 0
 }
 

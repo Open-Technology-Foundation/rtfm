@@ -3,13 +3,13 @@ set -euo pipefail
 declare -- PRG0 PRG VERSION
 PRG0="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"
 PRG="${PRG0##*/}"
-VERSION='1.0.1'
+VERSION='1.0.2'
 
 declare -i VERBOSE=1
 
 # Initialize COLUMNS for md2ansi if not already set
-[[ -z "${COLUMNS:-}" ]] && COLUMNS=$(tput cols 2>/dev/null || echo 78)
 declare -x COLUMNS
+[[ -n "${COLUMNS:-}" ]] || COLUMNS=$(tput cols 2>/dev/null || echo 78)
 
 declare -- MD2ANSI
 MD2ANSI=$(command -v md2ansi || echo 'cat -s -')
@@ -55,32 +55,45 @@ EOT
   exit "${1:-0}"
 }
 
+vecho() {
+  ((VERBOSE)) || return 0
+  echo "$PRG: $*"
+}
+error() { >&2 echo "$PRG: error: $*"; }
+warn() { >&2 echo "$PRG: warning: $*"; }
+die() {
+  local -i exit="${1:-0}"
+  shift
+  (($#)) && error "$@"
+  exit "$exit"
+}
+
 validate_command_name() {
   # Validate command name for security
   local -- cmd="$1"
   
   # Check if command is empty
   if [[ -z "$cmd" ]]; then
-    >&2 echo "$PRG: Error: Command name cannot be empty"
+    error "Command name cannot be empty"
     return 1
   fi
   
   # Check length (reasonable limit)
   if (( ${#cmd} > 64 )); then
-    >&2 echo "$PRG: Error: Command name too long (max 64 characters)"
+    error "Command name too long (max 64 characters)"
     return 1
   fi
   
   # Whitelist: Allow only alphanumeric, dash, underscore, dot, and plus
   # This covers valid command names like: ls, git-status, python3.9, g++
   if [[ ! "$cmd" =~ ^[a-zA-Z0-9._+-]+$ ]]; then
-    >&2 echo "$PRG: Error: Invalid command name. Only alphanumeric characters, dash, underscore, dot, and plus are allowed"
+    error "Invalid command name. Only alphanumeric characters, dash, underscore, dot, and plus are allowed"
     return 1
   fi
   
   # Reject if starts with dash (could be interpreted as option)
   if [[ "$cmd" =~ ^- ]]; then
-    >&2 echo "$PRG: Error: Command name cannot start with a dash"
+    error "Command name cannot start with a dash"
     return 1
   fi
   
@@ -113,7 +126,7 @@ validate_command_name() {
   local -- pattern
   for pattern in "${dangerous_patterns[@]}"; do
     if [[ "$cmd" == *"$pattern"* ]]; then
-      >&2 echo "$PRG: Error: Command name contains forbidden character or pattern: $pattern"
+      error "Command name contains forbidden character or pattern: $pattern"
       return 1
     fi
   done
@@ -151,7 +164,7 @@ check_manpage_updates() {
     if [[ -d "$dir" ]]; then
       # Find any man page file newer than man.list
       if find "$dir" -type f \( -name "*.[1-9]*.gz" -o -name "*.[1-9]*" \) -newer "$man_list" -print -quit 2>/dev/null | grep -q .; then
-        >&2 echo "$PRG: Warning: New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index."
+        warn "New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index."
         return 0
       fi
     fi
@@ -162,15 +175,15 @@ main() {
   local -- cmd='' pagebreak=''
   local -a files=()
 
-  (( $# )) || >&2 usage 1
+  (($#)) || >&2 usage 1
 
   while (($#)); do
     case $1 in
       -r|--rebuild-lists)
           can_sudo "$PRG" || exit 1
           # Re-execute with sudo if not already root
-          if ((EUID != 0)); then
-            echo "$PRG: Rebuilding lists requires sudo privileges"
+          if ((EUID)); then
+            warn "Rebuilding lists requires sudo privileges"
             exec sudo "$0" "$@"
           fi
           rebuild_help_lists
@@ -183,6 +196,7 @@ main() {
           {  echo '#!/usr/bin/env bash'
              echo 'set -euo pipefail'
              declare -p PRG VERBOSE
+             declare -pf warn error die vecho
              declare -pf install_update_rtfm rebuild_help_lists can_sudo
              declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
              echo "can_sudo '$PRG' || exit 1"
@@ -204,16 +218,12 @@ main() {
           set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}"
           ;;
 
-      -*) >&2 echo "$PRG: Invalid option '$1'"; exit 22 ;;
+      -*) die 22 "Invalid option '$1'" ;;
 
-      *)  [[ -n $cmd ]] && {
-            >&2 echo "$PRG: Too many arguments"; exit 2;
-          }
+      *)  [[ -n $cmd ]] && die 2 "Too many arguments '$1'"
           cmd="$1"
           # Validate command name for security
-          if ! validate_command_name "$cmd"; then
-            exit 22
-          fi
+          validate_command_name "$cmd" || die 22
           ;;
     esac
     shift
@@ -221,7 +231,7 @@ main() {
   
   # Ensure command is specified
   if [[ -z "$cmd" ]]; then
-    >&2 echo "$PRG: Error: No command specified"
+    error "No command specified"
     >&2 usage 1
   fi
 
@@ -284,15 +294,15 @@ main() {
 rebuild_help_lists() {
   sudo mkdir -m 755 -p /usr/local/share/rtfm
 
-  ((VERBOSE)) && echo "$PRG: Updating 'builtin' command list"
+  vecho "Updating 'builtin' command list"
   compgen -b | sort -u >/usr/local/share/rtfm/builtin.list || true
 
-  ((VERBOSE)) && echo "$PRG: Updating 'tldr' command list"
+  vecho "Updating 'tldr' command list"
   sudo find /usr/local/share/tldr/pages/common/ /usr/local/share/tldr/pages/linux/ -type f -exec basename -s '.md' {} \; 2>/dev/null \
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/tldr.list || true
 
-  ((VERBOSE)) && echo "$PRG: Updating 'man' command list"
+  vecho "Updating 'man' command list"
   local -a man_paths=()
   readarray -t man_paths < <(get_man_paths)
   sudo find "${man_paths[@]}" -type f \( -name "*.[1-9]*.gz" -o -name "*.[1-9]*" \) 2>/dev/null \
@@ -300,7 +310,7 @@ rebuild_help_lists() {
       | sort -u | grep -v ^$ \
     >/usr/local/share/rtfm/man.list || true
 
-  ((VERBOSE)) && echo "$PRG: Updating 'info' command list"
+  vecho "Updating 'info' command list"
   sudo find /usr/share/info /usr/local/share/info -type f -name "*.info*" 2>/dev/null \
       | sed 's/\.info.*$//' | sed 's/.*\///' \
       | sort -u | grep -v ^$ \
@@ -314,7 +324,7 @@ calculate_checksum() {
   # Calculate SHA256 checksum of a file
   local -- file="$1"
   if [[ ! -f "$file" ]]; then
-    >&2 echo "$PRG: Error: File not found: $file"
+    error "File not found: $file"
     return 1
   fi
   sha256sum "$file" 2>/dev/null | cut -d' ' -f1
@@ -326,13 +336,13 @@ verify_checksum() {
   local -- actual_hash
   
   if [[ ! -f "$file" ]]; then
-    >&2 echo "$PRG: Error: File not found for verification: $file"
+    error "File not found for verification: $file"
     return 1
   fi
   
   actual_hash=$(calculate_checksum "$file")
   if [[ -z "$actual_hash" ]]; then
-    >&2 echo "$PRG: Error: Could not calculate checksum for $file"
+    error "Could not calculate checksum for $file"
     return 1
   fi
   
@@ -345,7 +355,7 @@ download_checksums() {
   local -- REPOBASE="${3:-https://github.com/Open-Technology-Foundation}"
   local -- checksum_url="$REPOBASE/$repo/raw/main/checksums.sha256"
   
-  ((VERBOSE)) && echo "$PRG: Downloading checksums for $repo"
+  vecho "Downloading checksums for $repo"
   
   # Use curl if available, fallback to wget
   if command -v curl >/dev/null 2>&1; then
@@ -353,7 +363,7 @@ download_checksums() {
   elif command -v wget >/dev/null 2>&1; then
     wget -q "$checksum_url" -O "$basedir/checksums.sha256" 2>/dev/null
   else
-    >&2 echo "$PRG: Error: Neither curl nor wget found for downloading checksums"
+    error "Neither curl nor wget found for downloading checksums"
     return 1
   fi
 }
@@ -366,11 +376,11 @@ verify_repo_integrity() {
   local -i verification_failed=0
   
   if [[ ! -f "$checksum_file" ]]; then
-    >&2 echo "$PRG: Warning: No checksum file found for $repo, skipping verification"
+    warn "No checksum file found for $repo, skipping verification"
     return 0  # Allow installation without checksums for backward compatibility
   fi
   
-  ((VERBOSE)) && echo "$PRG: Verifying integrity of $repo"
+  vecho "Verifying integrity of $repo"
   
   # Read checksums and verify each file
   while IFS='  ' read -r hash filename; do
@@ -382,14 +392,14 @@ verify_repo_integrity() {
     
     if [[ -f "$basedir/$filename" ]]; then
       if verify_checksum "$basedir/$filename" "$hash"; then
-        ((VERBOSE)) && echo "$PRG: ✓ Verified $filename"
+        vecho "✓ Verified $filename"
       else
-        >&2 echo "$PRG: ✗ Checksum verification failed for $filename"
+        error "✗ Checksum verification failed for $filename"
         verification_failed=1
       fi
     else
       # Only warn for missing optional files
-      ((VERBOSE)) && echo "$PRG: Warning: File not found in download: $filename"
+      ((VERBOSE)) && warn "File not found in download: $filename"
     fi
   done < "$checksum_file"
   
@@ -398,14 +408,14 @@ verify_repo_integrity() {
 
 install_update_rtfm() {
   if ! command -v git >/dev/null; then
-    ((VERBOSE)) && echo "$PRG: Installing git..."
+    vecho "Installing git..."
     /usr/bin/apt-get -qq update || true
     /usr/bin/apt-get -qq install git || true
   fi
   
   # Check for sha256sum
   if ! command -v sha256sum >/dev/null; then
-    >&2 echo "$PRG: Warning: sha256sum not found, checksum verification will be skipped"
+    warn "sha256sum not found, checksum verification will be skipped"
   fi
 
   # already installed?
@@ -417,7 +427,7 @@ install_update_rtfm() {
   local -i update_failed=0
   
   for repo in tldr md2ansi rtfm; do
-    ((VERBOSE)) && echo "$PRG: $installupdate $REPOBASE/$repo"
+    vecho "$installupdate $REPOBASE/$repo"
     BASEDIR=/usr/local/share/"$repo"
     
     # Clean up any previous temp directory
@@ -425,7 +435,7 @@ install_update_rtfm() {
     
     # Clone repository to temp location
     if ! /usr/bin/git clone -q "$REPOBASE"/"$repo" "$BASEDIR".tmp; then
-      >&2 echo "$PRG: Error: Failed to clone $repo"
+      error "Failed to clone $repo"
       update_failed=1
       continue
     fi
@@ -436,7 +446,7 @@ install_update_rtfm() {
       
       # Verify repository integrity
       if ! verify_repo_integrity "$repo" "$BASEDIR.tmp"; then
-        >&2 echo "$PRG: Error: Checksum verification failed for $repo"
+        error "Checksum verification failed for $repo"
         rm -rf "$BASEDIR".tmp
         update_failed=1
         continue
@@ -451,7 +461,7 @@ install_update_rtfm() {
     
     # Move verified repository to final location
     if ! mv "$BASEDIR".tmp "$BASEDIR"; then
-      >&2 echo "$PRG: Error: Failed to install $repo"
+      error "Failed to install $repo"
       # Restore backup if move failed
       [[ -d "$BASEDIR".bak ]] && mv "$BASEDIR".bak "$BASEDIR"
       update_failed=1
@@ -475,13 +485,12 @@ install_update_rtfm() {
   
   # Only rebuild lists if rtfm was successfully updated
   if [[ ! -d /usr/local/share/rtfm ]] || ((update_failed)); then
-    >&2 echo "$PRG: Error: Update failed for one or more components"
-    exit 1
+    die 1 "Update failed for one or more components"
   fi
 
   rebuild_help_lists
 
-  ((VERBOSE)) && echo "$PRG: $installupdate complete"
+  vecho "$installupdate complete"
   exit 0
 }
 
@@ -489,13 +498,13 @@ can_sudo() {
   ((EUID)) || return 0
   # Check if sudo exists
   if ! command -v sudo &>/dev/null; then
-    >&2 echo "${1:-}: Error: 'sudo' command not found. This operation requires root privileges."
+    error "'sudo' command not found. This operation requires root privileges."
     return 1
   fi
   # Check if user is in sudo/admin group (common sudo access indicator)
   if ! groups | grep -qE '\b(sudo|admin|wheel)\b'; then
-    >&2 echo "${1:-}: Error: Your user account doesn't appear to have sudo privileges."
-    >&2 echo "${1:-}: This operation requires root or sudo access."
+    error "Your user account doesn't appear to have sudo privileges."
+    error "This operation requires root or sudo access."
     return 1
   fi
   # User has sudo command and appears to be in sudo group

@@ -85,9 +85,6 @@ sudo rtfm --update
 # Rebuild documentation indices after installing new packages
 sudo rtfm --rebuild-lists
 
-# View version information
-rtfm --version
-
 # Display help
 rtfm --help
 ```

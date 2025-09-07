@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Bash completion for rtfm
+
+_rtfm() {
+  local cur prev opts commands
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  # Options from the rtfm script
+  opts="-r --rebuild-lists --install --update -v --verbose -q --quiet -V --version -h --help"
+
+  # If previous word is an option that doesn't take arguments, complete with commands or options
+  case "$prev" in
+    -r|--rebuild-lists|--install|--update|-v|--verbose|-q|--quiet|-V|--version|-h|--help)
+      return 0
+      ;;
+  esac
+
+  # If current word starts with dash, complete with options
+  if [[ "$cur" == -* ]]; then
+    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    return 0
+  fi
+
+  # Complete with available commands from rtfm lists
+  commands=""
+  
+  # Add builtin commands if list exists
+  if [[ -f /usr/local/share/rtfm/builtin.list ]]; then
+    commands="$commands $(cat /usr/local/share/rtfm/builtin.list 2>/dev/null)"
+  fi
+  
+  # Add man page commands if list exists
+  if [[ -f /usr/local/share/rtfm/man.list ]]; then
+    commands="$commands $(cat /usr/local/share/rtfm/man.list 2>/dev/null)"
+  fi
+  
+  # Add info commands if list exists
+  if [[ -f /usr/local/share/rtfm/info.list ]]; then
+    commands="$commands $(cat /usr/local/share/rtfm/info.list 2>/dev/null)"
+  fi
+  
+  # Add tldr commands if list exists
+  if [[ -f /usr/local/share/rtfm/tldr.list ]]; then
+    commands="$commands $(cat /usr/local/share/rtfm/tldr.list 2>/dev/null)"
+  fi
+
+  # Remove duplicates and complete
+  if [[ -n "$commands" ]]; then
+    COMPREPLY=( $(compgen -W "$commands" -- "$cur" | sort -u) )
+  fi
+
+  return 0
+}
+
+# Register the completion function
+complete -F _rtfm rtfm

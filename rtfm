@@ -223,7 +223,7 @@ main() {
            declare -p PRG VERBOSE PROMPT
            declare -p RED GREEN YELLOW CYAN NC
            declare -pf _msg vecho success warn info error die
-           declare -pf install_update_rtfm rebuild_help_lists can_sudo
+           declare -pf install_update_rtfm rebuild_help_lists can_sudo get_man_paths
            declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
            echo "can_sudo '$PRG' || exit 1"
            echo 'install_update_rtfm'

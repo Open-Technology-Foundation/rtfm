@@ -6,13 +6,10 @@ set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
 
 # Script metadata
-VERSION='1.0.2'
+VERSION='1.1.0'
 SCRIPT_PATH="$(readlink -en -- "$0" 2>/dev/null || readlink -f -- "$0" 2>/dev/null || echo "$0")"
 SCRIPT_NAME="${SCRIPT_PATH##*/}"
 readonly -- VERSION SCRIPT_PATH SCRIPT_NAME
-
-# Legacy definition for compatibility (PRG is still used in many places)
-declare -n PRG=SCRIPT_NAME
 
 # Global variable declarations
 declare -i VERBOSE=1
@@ -261,7 +258,7 @@ main() {
       -h|--help)
         usage 0 ;;
       -V|--version)
-        echo "$PRG $VERSION"; exit 0 ;;
+        echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
 
       -[rvqhV]*) #shellcheck disable=SC2046  # Intentional word splitting
         set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}"

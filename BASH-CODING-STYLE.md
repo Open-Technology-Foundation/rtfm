@@ -1,1 +1,0 @@
-../claude/BASH-CODING-STYLE.md

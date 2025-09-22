@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
+# rtfm - Read The Fucking Manuals - searches and concatenates documentation
 set -euo pipefail
+
+# Recommended shell options
+shopt -s inherit_errexit shift_verbose extglob nullglob
 
 # Script metadata
 VERSION='1.0.2'
-PRG0="$(readlink -en -- "$0" 2>/dev/null || readlink -f -- "$0" 2>/dev/null || echo "$0")"
-PRG="${PRG0##*/}"
-readonly -- VERSION PRG0 PRG
+SCRIPT_PATH="$(readlink -en -- "$0" 2>/dev/null || readlink -f -- "$0" 2>/dev/null || echo "$0")"
+SCRIPT_NAME="${SCRIPT_PATH##*/}"
+readonly -- VERSION SCRIPT_PATH SCRIPT_NAME
+
+# Legacy definition for compatibility (PRG is still used in many places)
+declare -n PRG=SCRIPT_NAME
 
 # Global variable declarations
-declare -i VERBOSE=1 PROMPT=1
+declare -i VERBOSE=1
 
 # Initialize COLUMNS for md2ansi if not already set
 declare -x COLUMNS
@@ -20,9 +27,10 @@ MD2ANSI="$(command -v md2ansi || echo 'cat -s -')"
 LESSx="$(command -v less || echo 'cat')"
 readonly -- MD2ANSI LESSx
 
+# Print usage information
 usage() {
   cat <<EOT
-$PRG $VERSION - Read The Fucking Manuals
+$SCRIPT_NAME $VERSION - Read The Fucking Manuals
 
 A command-line utility that searches for documentation about
 commands across multiple help systems.
@@ -36,7 +44,7 @@ Searches for command help in order:
 
 All found pages are concatenated.
 
-Usage: $PRG [OPTIONS] command
+Usage: $SCRIPT_NAME [OPTIONS] command
 
 Options:
   -r|--rebuild-lists  Rebuild command lists from each help source
@@ -49,18 +57,18 @@ Options:
 
 Examples:
   # View documentation for rsync
-  $PRG rsync
+  $SCRIPT_NAME rsync
 
   # View bash builtin documentation
-  $PRG declare
+  $SCRIPT_NAME declare
 
   # Update rtfm and dependencies
-  $PRG --update
+  $SCRIPT_NAME --update
 EOT
   exit "${1:-0}"
 }
 
-# Colour definitions (if terminal output)
+# Color definitions (if terminal output)
 if [[ -t 2 ]]; then
   declare -- RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
 else
@@ -68,10 +76,13 @@ else
 fi
 readonly -- RED GREEN YELLOW CYAN NC
 
+# --------------------------------------------------------------------------------
 # Utility functions
+# --------------------------------------------------------------------------------
+
 # Core message function using FUNCNAME for context
 _msg() {
-  local -- status="${FUNCNAME[1]}" prefix="$PRG:" msg
+  local -- status="${FUNCNAME[1]}" prefix="$SCRIPT_NAME:" msg
   case "$status" in
     success) prefix+=" ${GREEN}✓${NC}" ;;
     warn)    prefix+=" ${YELLOW}⚡${NC}" ;;
@@ -87,12 +98,16 @@ _msg() {
 vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
 success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 warn() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
-info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 
 # Unconditional output
 error() { >&2 _msg "$@"; }
 die() { (($# > 1)) && error "${@:2}"; exit "${1:-0}"; }
 
+# --------------------------------------------------------------------------------
+# Validation and helper functions
+# --------------------------------------------------------------------------------
+
+# Validate command name for security
 validate_command_name() {
   # Validate command name for security
   local -- cmd="$1"
@@ -159,8 +174,12 @@ validate_command_name() {
   return 0
 }
 
+# --------------------------------------------------------------------------------
+# Path and command discovery functions
+# --------------------------------------------------------------------------------
+
+# Get man paths from manpath command, with fallback to common locations
 get_man_paths() {
-  # Get man paths from manpath command, with fallback to common locations
   local -a paths=()
   local -- IFS=':'
 
@@ -173,8 +192,8 @@ get_man_paths() {
   printf '%s\n' "${paths[@]}"
 }
 
+# Check if man page directories have been updated since last list rebuild
 check_manpage_updates() {
-  # Check if man page directories have been updated since last list rebuild
   local -- man_list='/usr/local/share/rtfm/man.list'
 
   # Skip check if man.list doesn't exist yet
@@ -196,6 +215,10 @@ check_manpage_updates() {
   done
 }
 
+# --------------------------------------------------------------------------------
+# Main function
+# --------------------------------------------------------------------------------
+
 main() {
   local -- cmd='' pagebreak=''
   local -a files=()
@@ -205,7 +228,7 @@ main() {
   while (($#)); do
     case "$1" in
       -r|--rebuild-lists)
-        can_sudo "$PRG" || exit 1
+        can_sudo "$SCRIPT_NAME" || exit 1
         # Re-execute with sudo if not already root
         if ((EUID)); then
           warn "Rebuilding lists requires sudo privileges"
@@ -215,17 +238,17 @@ main() {
         exit 0
         ;;
       --install|--update)
-        can_sudo "$PRG" || exit 1
+        can_sudo "$SCRIPT_NAME" || exit 1
         local -- install_rtfm='/tmp/install_update_rtfm.sh'
         sudo rm -f "$install_rtfm"
         {  echo '#!/usr/bin/env bash'
            echo 'set -euo pipefail'
-           declare -p PRG VERBOSE PROMPT
+           declare -p SCRIPT_NAME VERBOSE
            declare -p RED GREEN YELLOW CYAN NC
            declare -pf _msg vecho success warn info error die
            declare -pf install_update_rtfm rebuild_help_lists can_sudo get_man_paths
            declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
-           echo "can_sudo '$PRG' || exit 1"
+           echo "can_sudo '$SCRIPT_NAME' || exit 1"
            echo 'install_update_rtfm'
         } >"$install_rtfm"
         sudo chmod 700 "$install_rtfm"; sudo chown root:root "$install_rtfm"
@@ -272,7 +295,7 @@ main() {
 
     if grep -q -m1 "^${cmd}$" /usr/local/share/rtfm/man.list 2>/dev/null; then
       echo -e "${pagebreak}# MAN" | "$MD2ANSI"
-      env MANWIDTH=120 MANPAGER=cat /usr/bin/man "$cmd" 2>/dev/null | col -b
+      env MANWIDTH="$COLUMNS" MANPAGER=cat /usr/bin/man "$cmd" 2>/dev/null | col -b
       pagebreak='\n---\n'
     fi
 
@@ -317,6 +340,11 @@ main() {
 
 }
 
+# --------------------------------------------------------------------------------
+# List building and installation functions
+# --------------------------------------------------------------------------------
+
+# Rebuild command lists from each help source
 rebuild_help_lists() {
   sudo mkdir -m 755 -p /usr/local/share/rtfm
 
@@ -346,8 +374,8 @@ rebuild_help_lists() {
   return 0
 }
 
+# Calculate SHA256 checksum of a file
 calculate_checksum() {
-  # Calculate SHA256 checksum of a file
   local -- file="$1"
   if [[ ! -f "$file" ]]; then
     error "File not found: $file"
@@ -356,8 +384,8 @@ calculate_checksum() {
   sha256sum "$file" 2>/dev/null | cut -d' ' -f1
 }
 
+# Verify file against expected SHA256 hash
 verify_checksum() {
-  # Verify file against expected SHA256 hash
   local -- file="$1" expected_hash="$2"
   local -- actual_hash
   
@@ -375,8 +403,8 @@ verify_checksum() {
   [[ "$actual_hash" == "$expected_hash" ]]
 }
 
+# Download checksums file from repository
 download_checksums() {
-  # Download checksums file from repository
   local -- repo="$1" basedir="$2"
   local -- REPOBASE="${3:-https://github.com/Open-Technology-Foundation}"
   local -- checksum_url="$REPOBASE/$repo/raw/main/checksums.sha256"
@@ -394,8 +422,8 @@ download_checksums() {
   fi
 }
 
+# Verify repository files against checksums
 verify_repo_integrity() {
-  # Verify repository files against checksums
   local -- repo="$1" basedir="$2"
   local -- checksum_file="${basedir}/checksums.sha256"
   local -- hash filename
@@ -432,6 +460,7 @@ verify_repo_integrity() {
   return "$verification_failed"
 }
 
+# Install or update rtfm and dependencies
 install_update_rtfm() {
   if ! command -v git >/dev/null; then
     vecho "Installing git..."
@@ -520,6 +549,7 @@ install_update_rtfm() {
   exit 0
 }
 
+# Check if user has sudo privileges
 can_sudo() {
   ((EUID)) || return 0
   # Check if sudo exists

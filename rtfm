@@ -292,7 +292,8 @@ main() {
 
     if grep -q -m1 "^${cmd}$" /usr/local/share/rtfm/man.list 2>/dev/null; then
       echo -e "${pagebreak}# MAN" | "$MD2ANSI"
-      env MANWIDTH="$COLUMNS" MANPAGER=cat /usr/bin/man "$cmd" 2>/dev/null | col -b
+      declare -a OPTs=(--pager=cat --no-hyphenation --no-justification) 
+      env MANWIDTH="$COLUMNS" /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
       pagebreak='\n---\n'
     fi
 

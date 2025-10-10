@@ -47,7 +47,8 @@ sudo ./rtfm --install
 ```
 
 This installs:
-- `rtfm` to `/usr/local/share/rtfm/` with symlink in `/usr/local/bin/`
+- `rtfm` executable to `/usr/local/bin/rtfm`
+- Documentation indices to `/usr/local/share/rtfm/*.list`
 - `md2ansi` for enhanced markdown formatting
 - `tldr` pages for simplified command examples
 - Pre-generated documentation indices for your system
@@ -244,8 +245,9 @@ Documentation is concatenated with page breaks and piped through:
 
 ## File Locations
 
-- **Executable**: `/usr/local/bin/rtfm` (symlink to `/usr/local/share/rtfm/rtfm`)
+- **Executable**: `/usr/local/bin/rtfm`
 - **Documentation indices**: `/usr/local/share/rtfm/*.list`
+- **Repository**: `/usr/local/share/rtfm/` (reference/documentation)
 - **TLDR pages**: `/usr/local/share/tldr/`
 - **md2ansi**: `/usr/local/share/md2ansi/`
 

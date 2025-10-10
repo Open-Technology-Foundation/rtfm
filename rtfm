@@ -162,8 +162,7 @@ FEATURES
   • Integrated pagination with less
 
 FILES
-  /usr/local/bin/rtfm                    - Executable (symlink)
-  /usr/local/share/rtfm/rtfm             - Main script
+  /usr/local/bin/rtfm                    - Main executable
   /usr/local/share/rtfm/builtin.list     - Bash builtins index
   /usr/local/share/rtfm/man.list         - Man pages index
   /usr/local/share/rtfm/info.list        - Info pages index
@@ -432,7 +431,7 @@ install_update_rtfm() {
 
   # already installed?
   local -- installupdate='Installing'
-  [[ -f /usr/local/share/rtfm/rtfm ]] && installupdate='Updating'
+  [[ -f /usr/local/bin/rtfm ]] && installupdate='Updating'
 
   local -- REPOBASE='https://github.com/Open-Technology-Foundation'
   local -- BASEDIR repo
@@ -484,10 +483,31 @@ install_update_rtfm() {
     rm -rf "$BASEDIR.bak"
     chmod 755 "$BASEDIR"
 
-    # Set up symlinks for executables
+    # Install executables
     if [[ "$repo" == 'rtfm' ]]; then
       chmod 755 "$BASEDIR/rtfm"
-      /usr/bin/ln -fs "$BASEDIR/rtfm" /usr/local/bin/rtfm
+
+      # Backup existing executable if present and not a symlink
+      if [[ -f /usr/local/bin/rtfm ]] && [[ ! -L /usr/local/bin/rtfm ]]; then
+        cp /usr/local/bin/rtfm /usr/local/bin/rtfm.bak
+      fi
+
+      # Remove any existing symlink or file at target location
+      rm -f /usr/local/bin/rtfm
+
+      # Copy executable to final location
+      if ! cp "$BASEDIR/rtfm" /usr/local/bin/rtfm; then
+        error "Failed to install rtfm executable"
+        # Restore backup if copy failed
+        [[ -f /usr/local/bin/rtfm.bak ]] && mv /usr/local/bin/rtfm.bak /usr/local/bin/rtfm
+        update_failed=1
+        continue
+      fi
+
+      # Clean up backup on success
+      rm -f /usr/local/bin/rtfm.bak
+      chmod 755 /usr/local/bin/rtfm
+
     elif [[ "$repo" == 'md2ansi' ]]; then
       chmod 755 "$BASEDIR/md2ansi" "$BASEDIR/md"
       /usr/bin/ln -fs "$BASEDIR/md2ansi" /usr/local/bin/md2ansi
@@ -496,7 +516,7 @@ install_update_rtfm() {
   done
 
   # Only rebuild lists if rtfm was successfully updated
-  if [[ ! -d /usr/local/share/rtfm ]] || ((update_failed)); then
+  if [[ ! -f /usr/local/bin/rtfm ]] || ((update_failed)); then
     die 1 "Update failed for one or more components"
   fi
 

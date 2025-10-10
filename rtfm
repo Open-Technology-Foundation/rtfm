@@ -574,7 +574,7 @@ main() {
            echo 'set -euo pipefail'
            declare -p SCRIPT_NAME VERBOSE
            declare -p RED GREEN YELLOW CYAN NC
-           declare -pf _msg vecho success warn info error die
+           declare -pf _msg vecho success warn error die
            declare -pf install_update_rtfm rebuild_help_lists can_sudo get_man_paths
            declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
            echo "can_sudo '$SCRIPT_NAME' || exit 1"

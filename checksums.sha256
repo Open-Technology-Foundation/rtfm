@@ -1,7 +1,7 @@
 # SHA256 checksums for rtfm
-# Generated: 2025-10-10 02:16:54 UTC
+# Generated: 2025-10-10 02:22:43 UTC
 # Run update-checksums.sh before committing changes
 
-787683b065d7009057b888a46537153d312157652743ffcf9680778d44b2661c  rtfm
+30efd7faa8c5e0548cb45848c94e9f30240c72846d5708c25f1a024235c9c143  rtfm
 a08083497314db41bae3862fa602f8a838a312dde6e5411b4546a57f2f13bb1b  README.md
 3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  LICENSE

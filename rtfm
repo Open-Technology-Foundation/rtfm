@@ -5,8 +5,12 @@ set -euo pipefail
 # Recommended shell options
 shopt -s inherit_errexit shift_verbose extglob nullglob
 
+# PATH security
+readonly PATH='/usr/local/bin:/usr/bin:/bin'
+export PATH
+
 # Script metadata
-VERSION='1.1.0'
+VERSION='1.2.0'
 SCRIPT_PATH="$(readlink -en -- "$0" 2>/dev/null || readlink -f -- "$0" 2>/dev/null || echo "$0")"
 SCRIPT_NAME="${SCRIPT_PATH##*/}"
 readonly -- VERSION SCRIPT_PATH SCRIPT_NAME
@@ -18,52 +22,42 @@ declare -i VERBOSE=1
 declare -x COLUMNS
 [[ -n "${COLUMNS:-}" ]] || COLUMNS="$(tput cols 2>/dev/null || echo 78)"
 
+# Detect color support for stdout (main output)
+# Respects standard environment variables: NO_COLOR, FORCE_COLOR, CLICOLOR_FORCE
+declare -i USE_COLOR=1
+if [[ -n "${NO_COLOR:-}" ]]; then
+  USE_COLOR=0
+elif [[ -n "${FORCE_COLOR:-}" ]] || [[ -n "${CLICOLOR_FORCE:-}" ]]; then
+  USE_COLOR=1
+elif [[ ! -t 1 ]]; then
+  # Stdout is not a TTY (redirected to file or pipe)
+  USE_COLOR=0
+fi
+readonly USE_COLOR
+
 # External command paths
-declare -- MD2ANSI LESSx
-MD2ANSI="$(command -v md2ansi || echo 'cat -s -')"
+declare -- MD2ANSI_CMD LESSx
+MD2ANSI_CMD="$(command -v md2ansi || echo 'cat -s -')"
 LESSx="$(command -v less || echo 'cat')"
-readonly -- MD2ANSI LESSx
+readonly -- MD2ANSI_CMD LESSx
 
-# Print usage information
-usage() {
-  cat <<EOT
-$SCRIPT_NAME $VERSION - Read The Fucking Manuals
-
-A command-line utility that searches for documentation about
-commands across multiple help systems.
-
-Searches for command help in order:
-
-1. Bash builtin help
-2. Man pages
-3. Info pages
-4. TLDR pages
-
-All found pages are concatenated.
-
-Usage: $SCRIPT_NAME [OPTIONS] command
-
-Options:
-  -r|--rebuild-lists  Rebuild command lists from each help source
-  --install|--update  Install or update rtfm, md2ansi, and tldr
-                      from GitHub (requires git)
-  -v|--verbose        Verbose output during operations (default)
-  -q|--quiet          Suppress verbose output during operations
-  -V|--version        Print version ($VERSION)
-  -h|--help           This help
-
-Examples:
-  # View documentation for rsync
-  $SCRIPT_NAME rsync
-
-  # View bash builtin documentation
-  $SCRIPT_NAME declare
-
-  # Update rtfm and dependencies
-  $SCRIPT_NAME --update
-EOT
-  exit "${1:-0}"
+# Wrapper function for md2ansi that respects color settings
+md2ansi_wrapper() {
+  if ((USE_COLOR)); then
+    "$MD2ANSI_CMD" "$@"
+  else
+    # Disable colors by setting TERM=dumb (md2ansi respects this)
+    if [[ "$MD2ANSI_CMD" == *"md2ansi"* ]]; then
+      env TERM=dumb "$MD2ANSI_CMD" "$@"
+    else
+      "$MD2ANSI_CMD" "$@"
+    fi
+  fi
 }
+
+# Set MD2ANSI to the wrapper function name
+declare -- MD2ANSI='md2ansi_wrapper'
+readonly -- MD2ANSI
 
 # Color definitions (if terminal output)
 if [[ -t 2 ]]; then
@@ -95,10 +89,101 @@ _msg() {
 vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
 success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 warn() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
+info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 
 # Unconditional output
 error() { >&2 _msg "$@"; }
 die() { (($# > 1)) && error "${@:2}"; exit "${1:-0}"; }
+
+# Print usage information
+usage() {
+  cat <<EOT
+$SCRIPT_NAME $VERSION - Read The Fucking Manuals
+
+A unified documentation lookup tool that consolidates help from multiple
+sources into a single, easy-to-use interface.
+
+USAGE
+  $SCRIPT_NAME [OPTIONS] <command>
+  $SCRIPT_NAME --rebuild-lists
+  $SCRIPT_NAME --install|--update
+
+DESCRIPTION
+  rtfm searches for documentation across multiple help systems in priority
+  order, concatenating all found results for comprehensive coverage:
+
+  1. Bash builtin help    - Internal shell commands (cd, alias, declare, etc.)
+  2. Man pages           - System documentation from all manpath directories
+  3. Info pages          - GNU project documentation (often more detailed)
+  4. TLDR pages          - Simplified examples and common usage patterns
+  5. Command --help      - Fallback for scripts with --help support
+
+  All found documentation is concatenated with page breaks and displayed
+  through a pager (less) for easy navigation.
+
+OPTIONS
+  -r, --rebuild-lists    Rebuild command indices from all documentation sources
+                         (requires sudo - updates *.list files)
+
+  --install, --update    Install or update rtfm, md2ansi, and tldr from GitHub
+                         (requires sudo and git)
+
+  -v, --verbose          Enable verbose output during operations (default)
+  -q, --quiet            Suppress verbose messages during operations
+
+  -V, --version          Display version information
+  -h, --help             Show this help message
+
+EXAMPLES
+  # Look up rsync documentation (finds man page + tldr examples)
+  $SCRIPT_NAME rsync
+
+  # Get help for bash's declare builtin
+  $SCRIPT_NAME declare
+
+  # Find all documentation for the find command
+  $SCRIPT_NAME find
+
+  # View comprehensive GNU coreutils documentation
+  $SCRIPT_NAME coreutils
+
+  # Update rtfm and all dependencies from GitHub
+  sudo $SCRIPT_NAME --update
+
+  # Rebuild documentation indices after installing new packages
+  sudo $SCRIPT_NAME --rebuild-lists
+
+FEATURES
+  • Multi-source search with intelligent fallback
+  • Fast O(1) lookups using pre-built indices
+  • Automatic detection of new man pages
+  • SHA256 checksum verification for secure updates
+  • Enhanced markdown formatting with md2ansi
+  • Integrated pagination with less
+
+FILES
+  /usr/local/bin/rtfm                    - Executable (symlink)
+  /usr/local/share/rtfm/rtfm             - Main script
+  /usr/local/share/rtfm/builtin.list     - Bash builtins index
+  /usr/local/share/rtfm/man.list         - Man pages index
+  /usr/local/share/rtfm/info.list        - Info pages index
+  /usr/local/share/rtfm/tldr.list        - TLDR pages index
+
+SECURITY
+  • Input validation prevents command injection
+  • PATH locked to /usr/local/bin:/usr/bin:/bin
+  • SHA256 checksum verification during updates
+  • Automatic rollback on failed installations
+
+SEE ALSO
+  man(1), info(1), help(1), tldr(1)
+
+  GitHub: https://github.com/Open-Technology-Foundation/rtfm
+  Dependencies: https://github.com/Open-Technology-Foundation/md2ansi
+                https://github.com/Open-Technology-Foundation/tldr
+EOT
+  exit "${1:-0}"
+}
 
 # --------------------------------------------------------------------------------
 # Validation and helper functions
@@ -111,26 +196,26 @@ validate_command_name() {
 
   # Check if command is empty
   if [[ -z "$cmd" ]]; then
-    error "Command name cannot be empty"
+    error 'Command name cannot be empty'
     return 1
   fi
 
   # Check length (reasonable limit)
   if ((${#cmd} > 64)); then
-    error "Command name too long (max 64 characters)"
+    error 'Command name too long (max 64 characters)'
     return 1
   fi
-  
+
   # Whitelist: Allow only alphanumeric, dash, underscore, dot, and plus
   # This covers valid command names like: ls, git-status, python3.9, g++
   if [[ ! "$cmd" =~ ^[a-zA-Z0-9._+-]+$ ]]; then
-    error "Invalid command name. Only alphanumeric characters, dash, underscore, dot, and plus are allowed"
+    error 'Invalid command name. Only alphanumeric characters, dash, underscore, dot, and plus are allowed'
     return 1
   fi
-  
+
   # Reject if starts with dash (could be interpreted as option)
   if [[ "$cmd" =~ ^- ]]; then
-    error "Command name cannot start with a dash"
+    error 'Command name cannot start with a dash'
     return 1
   fi
   
@@ -210,132 +295,6 @@ check_manpage_updates() {
       fi
     fi
   done
-}
-
-# --------------------------------------------------------------------------------
-# Main function
-# --------------------------------------------------------------------------------
-
-main() {
-  local -- cmd='' pagebreak=''
-  local -a files=()
-
-  (($#)) || >&2 usage 1
-
-  while (($#)); do
-    case "$1" in
-      -r|--rebuild-lists)
-        can_sudo "$SCRIPT_NAME" || exit 1
-        # Re-execute with sudo if not already root
-        if ((EUID)); then
-          warn "Rebuilding lists requires sudo privileges"
-          exec sudo "$0" "$@"
-        fi
-        rebuild_help_lists
-        exit 0
-        ;;
-      --install|--update)
-        can_sudo "$SCRIPT_NAME" || exit 1
-        local -- install_rtfm='/tmp/install_update_rtfm.sh'
-        sudo rm -f "$install_rtfm"
-        {  echo '#!/usr/bin/env bash'
-           echo 'set -euo pipefail'
-           declare -p SCRIPT_NAME VERBOSE
-           declare -p RED GREEN YELLOW CYAN NC
-           declare -pf _msg vecho success warn info error die
-           declare -pf install_update_rtfm rebuild_help_lists can_sudo get_man_paths
-           declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
-           echo "can_sudo '$SCRIPT_NAME' || exit 1"
-           echo 'install_update_rtfm'
-        } >"$install_rtfm"
-        sudo chmod 700 "$install_rtfm"; sudo chown root:root "$install_rtfm"
-        exec sudo "$install_rtfm"; exit 1
-        ;;
-      -v|--verbose)
-        VERBOSE+=1 ;;
-      -q|--quiet)
-        VERBOSE=0 ;;
-      -h|--help)
-        usage 0 ;;
-      -V|--version)
-        echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
-
-      -[rvqhV]*) #shellcheck disable=SC2046  # Intentional word splitting
-        set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}"
-        ;;
-
-      -*) die 22 "Invalid option '$1'" ;;
-
-      *)  [[ -n "$cmd" ]] && die 2 "Too many arguments '$1'"
-        cmd="$1"
-        # Validate command name for security
-        validate_command_name "$cmd" || die 22
-        ;;
-    esac
-    shift
-  done
-
-  # Ensure command is specified
-  if [[ -z "$cmd" ]]; then
-    error "No command specified"
-    >&2 usage 1
-  fi
-
-  # Check for outdated man page index
-  check_manpage_updates
-
-  ( if grep -q -m1 "^${cmd}$" /usr/local/share/rtfm/builtin.list 2>/dev/null; then
-      echo -e "# BUILTIN\n" | "$MD2ANSI"
-      builtin help -m "$cmd" 2>/dev/null || builtin help "$cmd"
-      pagebreak='\n---\n'
-    fi
-
-    if grep -q -m1 "^${cmd}$" /usr/local/share/rtfm/man.list 2>/dev/null; then
-      echo -e "${pagebreak}# MAN" | "$MD2ANSI"
-      declare -a OPTs=(--pager=cat --no-hyphenation --no-justification) 
-      env MANWIDTH="$COLUMNS" /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
-      pagebreak='\n---\n'
-    fi
-
-    if grep -q -m1 "^${cmd}$" /usr/local/share/rtfm/info.list 2>/dev/null; then
-      echo -e "${pagebreak}# INFO" | "$MD2ANSI"
-      /usr/bin/info "$cmd" 2>/dev/null
-      pagebreak='\n---\n'
-    fi
-
-    readarray -t files < <(find /usr/local/share/tldr/pages/common /usr/local/share/tldr/pages/linux -type f -name "${cmd}.md" 2>/dev/null)
-    if ((${#files[@]})); then
-      { echo -e "${pagebreak}# TLDR\n"
-        cat -s -- "${files[0]}" | sed 's/`//g' | sed 's/{{//g' | sed 's/}}//g'
-      } | "$MD2ANSI"
-      pagebreak='\n---\n'
-    fi
-
-    # Fallback: Check if command exists and has --help
-    if [[ -z "$pagebreak" ]] && command -v "$cmd" >/dev/null 2>&1; then
-      local -- cmd_path real_path
-      cmd_path="$(command -v "$cmd" 2>/dev/null)"
-
-      # Follow symlinks to get the real path
-      real_path="$(readlink -f "$cmd_path" 2>/dev/null || echo "$cmd_path")"
-
-      # Check if it's a text file (script)
-      if [[ -f "$real_path" ]] && file -b "$real_path" 2>/dev/null | grep -q 'text'; then
-        # Check if the script contains --help
-        if grep -q -- '--help' "$real_path" 2>/dev/null; then
-          echo -e "${pagebreak}# COMMAND HELP\n" | "$MD2ANSI"
-          "$cmd" --help 2>&1 || true
-          pagebreak='\n---\n'
-        fi
-      fi
-    fi
-
-    if [[ -z "$pagebreak" ]]; then
-      echo "No help found for '$cmd'"
-    fi
-
-  ) | "$LESSx" -RFSX
-
 }
 
 # --------------------------------------------------------------------------------
@@ -423,7 +382,7 @@ download_checksums() {
 # Verify repository files against checksums
 verify_repo_integrity() {
   local -- repo="$1" basedir="$2"
-  local -- checksum_file="${basedir}/checksums.sha256"
+  local -- checksum_file="$basedir/checksums.sha256"
   local -- hash filename
   local -i verification_failed=0
 
@@ -442,8 +401,8 @@ verify_repo_integrity() {
     # Skip files that are in .gitignore (like CLAUDE.md)
     [[ "$filename" == 'CLAUDE.md' ]] && continue
 
-    if [[ -f "${basedir}/${filename}" ]]; then
-      if verify_checksum "${basedir}/${filename}" "$hash"; then
+    if [[ -f "$basedir/$filename" ]]; then
+      if verify_checksum "$basedir/$filename" "$hash"; then
         success "Verified $filename"
       else
         error "Checksum verification failed for $filename"
@@ -461,14 +420,14 @@ verify_repo_integrity() {
 # Install or update rtfm and dependencies
 install_update_rtfm() {
   if ! command -v git >/dev/null; then
-    vecho "Installing git..."
+    vecho 'Installing git...'
     /usr/bin/apt-get -qq update || true
     /usr/bin/apt-get -qq install git || true
   fi
 
   # Check for sha256sum
   if ! command -v sha256sum >/dev/null; then
-    warn "sha256sum not found, checksum verification will be skipped"
+    warn 'sha256sum not found, checksum verification will be skipped'
   fi
 
   # already installed?
@@ -480,14 +439,14 @@ install_update_rtfm() {
   local -i update_failed=0
   
   for repo in tldr md2ansi rtfm; do
-    vecho "$installupdate ${REPOBASE}/$repo"
-    BASEDIR="/usr/local/share/${repo}"
+    vecho "$installupdate $REPOBASE/$repo"
+    BASEDIR="/usr/local/share/$repo"
 
     # Clean up any previous temp directory
-    rm -rf "${BASEDIR}.tmp"
+    rm -rf "$BASEDIR.tmp"
 
     # Clone repository to temp location
-    if ! /usr/bin/git clone -q "${REPOBASE}/${repo}" "${BASEDIR}.tmp"; then
+    if ! /usr/bin/git clone -q "$REPOBASE/$repo" "$BASEDIR.tmp"; then
       error "Failed to clone $repo"
       update_failed=1
       continue
@@ -495,12 +454,12 @@ install_update_rtfm() {
 
     # Download and verify checksums if sha256sum is available
     if command -v sha256sum >/dev/null; then
-      download_checksums "$repo" "${BASEDIR}.tmp" "$REPOBASE" || true
+      download_checksums "$repo" "$BASEDIR.tmp" "$REPOBASE" || true
 
       # Verify repository integrity
-      if ! verify_repo_integrity "$repo" "${BASEDIR}.tmp"; then
+      if ! verify_repo_integrity "$repo" "$BASEDIR.tmp"; then
         error "Checksum verification failed for $repo"
-        rm -rf "${BASEDIR}.tmp"
+        rm -rf "$BASEDIR.tmp"
         update_failed=1
         continue
       fi
@@ -508,31 +467,31 @@ install_update_rtfm() {
 
     # Backup existing installation if present
     if [[ -d "$BASEDIR" ]]; then
-      rm -rf "${BASEDIR}.bak"
-      mv "$BASEDIR" "${BASEDIR}.bak"
+      rm -rf "$BASEDIR.bak"
+      mv "$BASEDIR" "$BASEDIR.bak"
     fi
 
     # Move verified repository to final location
-    if ! mv "${BASEDIR}.tmp" "$BASEDIR"; then
+    if ! mv "$BASEDIR.tmp" "$BASEDIR"; then
       error "Failed to install $repo"
       # Restore backup if move failed
-      [[ -d "${BASEDIR}.bak" ]] && mv "${BASEDIR}.bak" "$BASEDIR"
+      [[ -d "$BASEDIR.bak" ]] && mv "$BASEDIR.bak" "$BASEDIR"
       update_failed=1
       continue
     fi
 
     # Clean up backup on successful installation
-    rm -rf "${BASEDIR}.bak"
+    rm -rf "$BASEDIR.bak"
     chmod 755 "$BASEDIR"
 
     # Set up symlinks for executables
     if [[ "$repo" == 'rtfm' ]]; then
-      chmod 755 "${BASEDIR}/rtfm"
-      /usr/bin/ln -fs "${BASEDIR}/rtfm" /usr/local/bin/rtfm
+      chmod 755 "$BASEDIR/rtfm"
+      /usr/bin/ln -fs "$BASEDIR/rtfm" /usr/local/bin/rtfm
     elif [[ "$repo" == 'md2ansi' ]]; then
-      chmod 755 "${BASEDIR}/md2ansi" "${BASEDIR}/md"
-      /usr/bin/ln -fs "${BASEDIR}/md2ansi" /usr/local/bin/md2ansi
-      /usr/bin/ln -fs "${BASEDIR}/md" /usr/local/bin/md
+      chmod 755 "$BASEDIR/md2ansi" "$BASEDIR/md"
+      /usr/bin/ln -fs "$BASEDIR/md2ansi" /usr/local/bin/md2ansi
+      /usr/bin/ln -fs "$BASEDIR/md" /usr/local/bin/md
     fi
   done
 
@@ -563,6 +522,136 @@ can_sudo() {
   fi
   # User has sudo command and appears to be in sudo group
   return 0
+}
+
+# --------------------------------------------------------------------------------
+# Main function
+# --------------------------------------------------------------------------------
+
+main() {
+  local -- cmd='' pagebreak=''
+  local -a files=()
+
+  (($#)) || >&2 usage 1
+
+  while (($#)); do
+    case $1 in
+      -r|--rebuild-lists)
+        can_sudo "$SCRIPT_NAME" || exit 1
+        # Re-execute with sudo if not already root
+        if ((EUID)); then
+          warn 'Rebuilding lists requires sudo privileges'
+          exec sudo "$0" "$@"
+        fi
+        rebuild_help_lists
+        exit 0
+        ;;
+      --install|--update)
+        can_sudo "$SCRIPT_NAME" || exit 1
+        local -- install_rtfm='/tmp/install_update_rtfm.sh'
+        sudo rm -f "$install_rtfm"
+        {  echo '#!/usr/bin/env bash'
+           echo 'set -euo pipefail'
+           declare -p SCRIPT_NAME VERBOSE
+           declare -p RED GREEN YELLOW CYAN NC
+           declare -pf _msg vecho success warn info error die
+           declare -pf install_update_rtfm rebuild_help_lists can_sudo get_man_paths
+           declare -pf calculate_checksum verify_checksum download_checksums verify_repo_integrity
+           echo "can_sudo '$SCRIPT_NAME' || exit 1"
+           echo 'install_update_rtfm'
+        } >"$install_rtfm"
+        sudo chmod 700 "$install_rtfm"; sudo chown root:root "$install_rtfm"
+        exec sudo "$install_rtfm"; exit 1
+        ;;
+      -v|--verbose)
+        VERBOSE+=1 ;;
+      -q|--quiet)
+        VERBOSE=0 ;;
+      -h|--help)
+        usage 0 ;;
+      -V|--version)
+        echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
+
+      -[rvqhV]*) #shellcheck disable=SC2046  # Intentional word splitting
+        set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}"
+        ;;
+
+      -*) die 22 "Invalid option '$1'" ;;
+
+      *)  [[ -n "$cmd" ]] && die 2 "Too many arguments '$1'"
+        cmd="$1"
+        # Validate command name for security
+        validate_command_name "$cmd" || die 22
+        ;;
+    esac
+    shift
+  done
+
+  # Ensure command is specified
+  if [[ -z "$cmd" ]]; then
+    error 'No command specified'
+    >&2 usage 1
+  fi
+
+  # Check for outdated man page index
+  check_manpage_updates
+
+  ( if grep -q -m1 "^$cmd$" /usr/local/share/rtfm/builtin.list 2>/dev/null; then
+      echo -e "# BUILTIN\n" | "$MD2ANSI"
+      builtin help -m "$cmd" 2>/dev/null || builtin help "$cmd"
+      pagebreak='\n---\n'
+    fi
+
+    if grep -q -m1 "^$cmd$" /usr/local/share/rtfm/man.list 2>/dev/null; then
+      echo -e "$pagebreak# MAN" | "$MD2ANSI"
+      declare -a OPTs=(--pager=cat --no-hyphenation --no-justification)
+      if ((USE_COLOR)); then
+        env MANWIDTH="$COLUMNS" /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
+      else
+        env GROFF_NO_SGR=1 MANWIDTH="$COLUMNS" /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
+      fi
+      pagebreak='\n---\n'
+    fi
+
+    if grep -q -m1 "^$cmd$" /usr/local/share/rtfm/info.list 2>/dev/null; then
+      echo -e "$pagebreak# INFO" | "$MD2ANSI"
+      /usr/bin/info "$cmd" 2>/dev/null
+      pagebreak='\n---\n'
+    fi
+
+    readarray -t files < <(find /usr/local/share/tldr/pages/common /usr/local/share/tldr/pages/linux -type f -name "$cmd.md" 2>/dev/null)
+    if ((${#files[@]})); then
+      { echo -e "$pagebreak# TLDR\n"
+        cat -s -- "${files[0]}" | sed 's/`//g' | sed 's/{{//g' | sed 's/}}//g'
+      } | "$MD2ANSI"
+      pagebreak='\n---\n'
+    fi
+
+    # Fallback: Check if command exists and has --help
+    if [[ -z "$pagebreak" ]] && command -v "$cmd" >/dev/null 2>&1; then
+      local -- cmd_path real_path
+      cmd_path="$(command -v "$cmd" 2>/dev/null)"
+
+      # Follow symlinks to get the real path
+      real_path="$(readlink -f "$cmd_path" 2>/dev/null || echo "$cmd_path")"
+
+      # Check if it's a text file (script)
+      if [[ -f "$real_path" ]] && file -b "$real_path" 2>/dev/null | grep -q 'text'; then
+        # Check if the script contains --help
+        if grep -q -- '--help' "$real_path" 2>/dev/null; then
+          echo -e "$pagebreak# COMMAND HELP\n" | "$MD2ANSI"
+          "$cmd" --help 2>&1 || true
+          pagebreak='\n---\n'
+        fi
+      fi
+    fi
+
+    if [[ -z "$pagebreak" ]]; then
+      echo "No help found for '$cmd'"
+    fi
+
+  ) | "$LESSx" -RFSX
+
 }
 
 main "$@"

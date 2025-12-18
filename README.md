@@ -53,6 +53,44 @@ This installs:
 - `tldr` pages for simplified command examples
 - Pre-generated documentation indices for your system
 
+## Bash Completion
+
+rtfm includes bash completion for tab-completing command names and options.
+
+### System-wide Installation
+
+```bash
+# Copy to system completion directory (all users)
+sudo cp rtfm.bash_completion /etc/bash_completion.d/rtfm
+```
+
+### User-specific Installation
+
+```bash
+# Add to your ~/.bashrc
+echo 'source /usr/local/share/rtfm/rtfm.bash_completion' >> ~/.bashrc
+
+# Reload your shell
+source ~/.bashrc
+```
+
+### Usage
+
+Once installed, tab completion works for:
+
+```bash
+# Complete options
+rtfm --<TAB>
+# Shows: --help --install --quiet --rebuild-lists --update --verbose --version
+
+# Complete command names from all documentation sources
+rtfm rs<TAB>
+# Shows: rsync, rsh, rstart, ...
+
+rtfm decl<TAB>
+# Completes to: declare
+```
+
 ## Usage
 
 ### Basic Lookup
@@ -151,7 +189,7 @@ FORCE_COLOR=1 rtfm ls >/tmp/ls-colored.txt
 rtfm ls 2>/dev/null | awk '/SYNOPSIS/ {print}'
 ```
 
-### How It Works
+### Color Detection Mechanism
 
 Color detection happens at multiple levels:
 
@@ -249,6 +287,8 @@ Documentation is concatenated with page breaks and piped through:
 
 - **Executable**: `/usr/local/bin/rtfm`
 - **Documentation indices**: `/usr/local/share/rtfm/*.list`
+- **Bash completion**: `/usr/local/share/rtfm/rtfm.bash_completion`
+- **Manpage**: `/usr/local/share/man/man1/rtfm.1` (if installed via `rtfm-manpage.sh --install`)
 - **Repository**: `/usr/local/share/rtfm/` (reference/documentation)
 - **TLDR pages**: `/usr/local/share/tldr/`
 - **md2ansi**: `/usr/local/share/md2ansi/`
@@ -309,6 +349,23 @@ NO_COLOR=1 rtfm ls >/tmp/file.txt
 md2ansi --version  # Should be 0.9.6-bash or later
 ```
 
+### Bash completion not working
+
+```bash
+# Verify completion file exists
+ls -la /usr/local/share/rtfm/rtfm.bash_completion
+
+# Source it manually to test
+source /usr/local/share/rtfm/rtfm.bash_completion
+
+# Verify completion is registered
+complete -p rtfm
+# Should output: complete -F _rtfm rtfm
+
+# If not installed system-wide, add to ~/.bashrc:
+echo 'source /usr/local/share/rtfm/rtfm.bash_completion' >> ~/.bashrc
+```
+
 ## Development
 
 ### Code Standards
@@ -329,7 +386,7 @@ This project achieves **100% compliance** with strict Bash coding standards:
 
 ```bash
 # Lint all shell scripts
-shellcheck rtfm rtfm.bash_completion update-checksums.sh
+shellcheck rtfm rtfm.bash_completion update-checksums.sh rtfm-manpage.sh
 
 # Test basic functionality
 rtfm --help
@@ -341,6 +398,10 @@ rtfm ls                      # Should have colors in TTY
 rtfm ls >/tmp/test.txt       # Should be clean text
 NO_COLOR=1 rtfm ls           # Should have no colors
 FORCE_COLOR=1 rtfm ls >/tmp/test.txt  # Should have colors
+
+# Test bash completion
+source rtfm.bash_completion
+complete -p rtfm             # Should show: complete -F _rtfm rtfm
 
 # Test rebuilding indices (requires sudo)
 sudo rtfm --rebuild-lists
@@ -365,22 +426,33 @@ sudo rtfm --rebuild-lists
 - ✅ **Man page color control** - Sets `GROFF_NO_SGR=1` to prevent SGR escape sequences when colors disabled
 - ✅ **Independent stderr colors** - Error/warning messages check TTY separately for better UX
 
+**Architecture Improvements:**
+- ✅ **FHS-compliant installation** - Migrated to `/usr/local/share/` structure for proper filesystem hierarchy
+- ✅ **Manpage support** - Added `rtfm-manpage.sh` generator with `--install` option for system integration
+- ✅ **Bash completion** - Renamed to `rtfm.bash_completion` with optimized completion function
+
 **Security Improvements:**
 - ✅ **Secure temp files** - Replaced hardcoded temp path with `mktemp` to prevent symlink attacks
 - ✅ **Self-cleaning installer** - EXIT trap automatically removes temp script after installation
 - ✅ **PATH security lockdown** - Locked to `/usr/local/bin:/usr/bin:/bin`
 
-**Code Quality Improvements:**
+**BCS Compliance:**
 - ✅ **100% BASH-CODING-STANDARD.md compliance** - Systematic code review and refactoring
 - ✅ **Bottom-up function organization** - Proper dependency order (messaging → validation → business logic → main)
 - ✅ **Variable expansion cleanup** - Removed ~55 unnecessary braces
 - ✅ **String quoting standardization** - Static strings use single quotes
-- ✅ **ShellCheck compliance** - Zero warnings across all shell scripts (rtfm, rtfm.bash_completion, update-checksums.sh)
+- ✅ **ShellCheck compliance** - Zero warnings across all shell scripts
+- ✅ **Standard shopts** - Added `inherit_errexit shift_verbose extglob nullglob` to all scripts
+- ✅ **Script markers** - All scripts end with `#fin` marker per BCS standard
 
 **Documentation & Usability:**
 - Rewrote `usage()` function with 8 comprehensive sections (added ENVIRONMENT)
-- Completely rewrote README.md with color detection documentation
+- Completely rewrote README.md with color detection and bash completion documentation
 - Added comprehensive inline documentation
+- Generated manpage (`rtfm.1`) with full feature documentation
+
+**Bug Fixes:**
+- Fixed `info()` function incorrectly included in function exports during install/update
 
 **Result:** Clean text output when redirected, colored output in terminals, with full user control via environment variables
 

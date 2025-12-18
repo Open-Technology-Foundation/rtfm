@@ -209,6 +209,7 @@ This ensures your documentation index stays current without manual intervention.
 - **Input validation**: Whitelists safe characters, blocks shell metacharacters and path traversal
 - **PATH lockdown**: Locked to `/usr/local/bin:/usr/bin:/bin` to prevent command injection
 - **SHA256 checksums**: Verifies integrity of downloaded files during updates
+- **Secure temp files**: Uses `mktemp` for unpredictable temp file names (prevents symlink attacks)
 - **Automatic rollback**: Restores previous version if update fails
 - **Privilege checks**: Uses `can_sudo()` to verify permissions before system changes
 
@@ -227,13 +228,14 @@ These indices are created during installation and can be rebuilt with `sudo rtfm
 
 ### Install/Update System
 
-The `--install` and `--update` flags:
-1. Clone rtfm, md2ansi, and tldr from GitHub to temporary directories
-2. Verify SHA256 checksums (if sha256sum available)
-3. Back up existing installations to `.bak`
-4. Atomically move verified repositories to final locations
-5. Roll back to `.bak` on failure
-6. Rebuild all documentation indices
+The `--install` and `--update` flags create a secure temporary installer script:
+1. Generate unpredictable temp file via `mktemp` (self-cleaning on EXIT)
+2. Clone rtfm, md2ansi, and tldr from GitHub to `.tmp` directories
+3. Verify SHA256 checksums (if sha256sum available)
+4. Back up existing installations to `.bak`
+5. Atomically move verified repositories to final locations
+6. Roll back to `.bak` on failure
+7. Rebuild all documentation indices
 
 ### Output Pipeline
 
@@ -326,8 +328,8 @@ This project achieves **100% compliance** with strict Bash coding standards:
 ### Testing
 
 ```bash
-# Lint the script
-shellcheck rtfm
+# Lint all shell scripts
+shellcheck rtfm rtfm.bash_completion update-checksums.sh
 
 # Test basic functionality
 rtfm --help
@@ -363,16 +365,20 @@ sudo rtfm --rebuild-lists
 - ✅ **Man page color control** - Sets `GROFF_NO_SGR=1` to prevent SGR escape sequences when colors disabled
 - ✅ **Independent stderr colors** - Error/warning messages check TTY separately for better UX
 
+**Security Improvements:**
+- ✅ **Secure temp files** - Replaced hardcoded temp path with `mktemp` to prevent symlink attacks
+- ✅ **Self-cleaning installer** - EXIT trap automatically removes temp script after installation
+- ✅ **PATH security lockdown** - Locked to `/usr/local/bin:/usr/bin:/bin`
+
 **Code Quality Improvements:**
 - ✅ **100% BASH-CODING-STANDARD.md compliance** - Systematic code review and refactoring
 - ✅ **Bottom-up function organization** - Proper dependency order (messaging → validation → business logic → main)
 - ✅ **Variable expansion cleanup** - Removed ~55 unnecessary braces
 - ✅ **String quoting standardization** - Static strings use single quotes
-- ✅ **PATH security lockdown** - Locked to `/usr/local/bin:/usr/bin:/bin`
-- ✅ **ShellCheck compliance** - Zero warnings with proper disable directives
+- ✅ **ShellCheck compliance** - Zero warnings across all shell scripts (rtfm, rtfm.bash_completion, update-checksums.sh)
 
 **Documentation & Usability:**
-- Completely rewrote `usage()` function with 7 comprehensive sections
+- Rewrote `usage()` function with 8 comprehensive sections (added ENVIRONMENT)
 - Completely rewrote README.md with color detection documentation
 - Added comprehensive inline documentation
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit shift_verbose extglob nullglob
 
 # Script to update checksums.sha256 file
 # Run this before committing changes to ensure checksums are current
@@ -56,3 +57,4 @@ main() {
 }
 
 main "$@"
+#fin

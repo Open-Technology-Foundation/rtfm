@@ -134,6 +134,15 @@ OPTIONS
   -V, --version          Display version information
   -h, --help             Show this help message
 
+ENVIRONMENT
+  NO_COLOR               Disable all ANSI color output (any value)
+  FORCE_COLOR            Force color output even when redirected to file/pipe
+  CLICOLOR_FORCE         Alternative to FORCE_COLOR (same effect)
+
+  Color output is automatically disabled when stdout is redirected to a file
+  or pipe. Use FORCE_COLOR=1 to override. Error messages to stderr have
+  independent TTY detection.
+
 EXAMPLES
   # Look up rsync documentation (finds man page + tldr examples)
   $SCRIPT_NAME rsync
@@ -156,6 +165,7 @@ EXAMPLES
 FEATURES
   • Multi-source search with intelligent fallback
   • Fast O(1) lookups using pre-built indices
+  • Smart color detection (auto-disables for redirected output)
   • Automatic detection of new man pages
   • SHA256 checksum verification for secure updates
   • Enhanced markdown formatting with md2ansi
@@ -567,11 +577,14 @@ main() {
         exit 0
         ;;
       --install|--update)
+        # Security: Create temp script with mktemp (unpredictable name) instead of
+        # hardcoded path to prevent symlink attacks. Self-cleaning via EXIT trap.
         can_sudo "$SCRIPT_NAME" || exit 1
-        local -- install_rtfm='/tmp/install_update_rtfm.sh'
-        sudo rm -f "$install_rtfm"
+        local -- install_rtfm
+        install_rtfm="$(mktemp /tmp/rtfm_install.XXXXXXXXXX.sh)"
         {  echo '#!/usr/bin/env bash'
            echo 'set -euo pipefail'
+           echo "trap 'rm -f \"$install_rtfm\"' EXIT"
            declare -p SCRIPT_NAME VERBOSE
            declare -p RED GREEN YELLOW CYAN NC
            declare -pf _msg vecho success warn error die
@@ -580,7 +593,7 @@ main() {
            echo "can_sudo '$SCRIPT_NAME' || exit 1"
            echo 'install_update_rtfm'
         } >"$install_rtfm"
-        sudo chmod 700 "$install_rtfm"; sudo chown root:root "$install_rtfm"
+        chmod 700 "$install_rtfm"
         exec sudo "$install_rtfm"; exit 1
         ;;
       -v|--verbose)

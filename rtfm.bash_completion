@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Bash completion for rtfm
+# Source this file or copy to /etc/bash_completion.d/rtfm
+
+_rtfm() {
+  local cur prev opts
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  # Options from the rtfm script
+  opts="-r --rebuild-lists --install --update -v --verbose -q --quiet -V --version -h --help"
+
+  # If previous word is an option that doesn't take arguments, complete with commands or options
+  case "$prev" in
+    -r|--rebuild-lists|--install|--update|-v|--verbose|-q|--quiet|-V|--version|-h|--help)
+      return 0
+      ;;
+  esac
+
+  # If current word starts with dash, complete with options
+  if [[ "$cur" == -* ]]; then
+    mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
+    return 0
+  fi
+
+  # Complete with available commands from rtfm lists
+  local -- commands=''
+  local -a list_files=(
+    /usr/local/share/rtfm/builtin.list
+    /usr/local/share/rtfm/man.list
+    /usr/local/share/rtfm/info.list
+    /usr/local/share/rtfm/tldr.list
+  )
+  local -- file
+  for file in "${list_files[@]}"; do
+    [[ -f "$file" ]] && commands+=" $(<"$file")"
+  done
+
+  # Remove duplicates and complete
+  if [[ -n "$commands" ]]; then
+    mapfile -t COMPREPLY < <(compgen -W "$commands" -- "$cur" | sort -u)
+  fi
+
+  return 0
+}
+
+# Register the completion function
+complete -F _rtfm rtfm
+#fin

@@ -200,7 +200,8 @@ EOT
 
 # Validate command name for security
 validate_command_name() {
-  # Validate command name for security
+  # Args: $1 = command name
+  # Returns: 0 if valid, 1 if invalid (with error message to stderr)
   local -- cmd="$1"
 
   # Check if command is empty

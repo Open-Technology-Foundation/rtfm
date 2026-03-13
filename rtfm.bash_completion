@@ -11,7 +11,7 @@ _rtfm() {
   # Options from the rtfm script
   opts="-r --rebuild-lists --install --update -v --verbose -q --quiet -V --version -h --help"
 
-  # If previous word is an option that doesn't take arguments, complete with commands or options
+  # Terminal options: these actions don't accept further arguments
   case "$prev" in
     -r|--rebuild-lists|--install|--update|-v|--verbose|-q|--quiet|-V|--version|-h|--help)
       return 0

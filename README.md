@@ -193,7 +193,7 @@ rtfm ls 2>/dev/null | awk '/SYNOPSIS/ {print}'
 
 Color detection happens at multiple levels:
 
-1. **Main headers** (BUILTIN, MAN, INFO, TLDR): Processed by `md2ansi`
+1. **Main headers** (BUILTIN, MAN, INFO, TLDR, COMMAND HELP): Processed by `md2ansi`
    - Detects stdout TTY status automatically
    - When not a TTY, uses `TERM=dumb` to disable colors
 
@@ -372,7 +372,7 @@ echo 'source /usr/local/share/rtfm/rtfm.bash_completion' >> ~/.bashrc
 
 This project achieves **100% compliance** with strict Bash coding standards:
 
-- **[BASH-CODING-STANDARD.md](BASH-CODING-STANDARD.md)** - Full compliance with comprehensive Bash 5.2+ standard
+- **Bash Coding Standard (BCS)** - Full compliance with comprehensive Bash 5.2+ standard
   - Bottom-up function organization (messaging → validation → business logic → main)
   - Proper variable expansion (`"$var"` without unnecessary braces)
   - Single quotes for static strings, double quotes only when needed
@@ -410,14 +410,20 @@ sudo rtfm --rebuild-lists
 ### Contributing
 
 1. Fork the repository
-2. Make your changes following BASH-CODING-STANDARD.md
+2. Make your changes following the Bash Coding Standard (BCS)
 3. Run `./update-checksums.sh` before committing
 4. Ensure `shellcheck rtfm` passes with no warnings
 5. Submit a pull request
 
 ## Version History
 
-### v1.2.0 (Current) - Smart Color Detection & Code Quality
+### v1.2.1 (Current) - FHS Migration & Bug Fix
+
+- Migrated to FHS-compliant installation structure (`/usr/local/share/`)
+- Fixed `info()` function incorrectly included in function exports during install/update
+- Improved BCS compliance, security hardening, and documentation
+
+### v1.2.0 - Smart Color Detection & Code Quality
 
 **Color Output Features:**
 - ✅ **Automatic TTY detection** - ANSI colors automatically disabled when output is redirected to files or pipes
@@ -427,7 +433,6 @@ sudo rtfm --rebuild-lists
 - ✅ **Independent stderr colors** - Error/warning messages check TTY separately for better UX
 
 **Architecture Improvements:**
-- ✅ **FHS-compliant installation** - Migrated to `/usr/local/share/` structure for proper filesystem hierarchy
 - ✅ **Manpage support** - Added `rtfm-manpage.sh` generator with `--install` option for system integration
 - ✅ **Bash completion** - Renamed to `rtfm.bash_completion` with optimized completion function
 
@@ -437,7 +442,7 @@ sudo rtfm --rebuild-lists
 - ✅ **PATH security lockdown** - Locked to `/usr/local/bin:/usr/bin:/bin`
 
 **BCS Compliance:**
-- ✅ **100% BASH-CODING-STANDARD.md compliance** - Systematic code review and refactoring
+- ✅ **100% BCS compliance** - Systematic code review and refactoring
 - ✅ **Bottom-up function organization** - Proper dependency order (messaging → validation → business logic → main)
 - ✅ **Variable expansion cleanup** - Removed ~55 unnecessary braces
 - ✅ **String quoting standardization** - Static strings use single quotes
@@ -450,9 +455,6 @@ sudo rtfm --rebuild-lists
 - Completely rewrote README.md with color detection and bash completion documentation
 - Added comprehensive inline documentation
 - Generated manpage (`rtfm.1`) with full feature documentation
-
-**Bug Fixes:**
-- Fixed `info()` function incorrectly included in function exports during install/update
 
 **Result:** Clean text output when redirected, colored output in terminals, with full user control via environment variables
 

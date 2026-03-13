@@ -41,9 +41,9 @@ can_sudo() {
 # Function to extract version from rtfm script
 get_version() {
   if [[ -f "${SCRIPT_DIR}/rtfm" ]]; then
-    grep -oP "VERSION='\\K[^']+" "${SCRIPT_DIR}/rtfm" 2>/dev/null || echo "1.2.1"
+    grep -oP "VERSION='\\K[^']+" "${SCRIPT_DIR}/rtfm" 2>/dev/null || echo 'unknown'
   else
-    echo "1.2.1"
+    echo 'unknown'
   fi
 }
 

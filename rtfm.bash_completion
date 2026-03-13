@@ -11,9 +11,9 @@ _rtfm() {
   # Options from the rtfm script
   opts="-r --rebuild-lists --install --update -v --verbose -q --quiet -V --version -h --help"
 
-  # Terminal options: these actions don't accept further arguments
+  # Terminal options: these actions exit immediately, no further arguments needed
   case "$prev" in
-    -r|--rebuild-lists|--install|--update|-v|--verbose|-q|--quiet|-V|--version|-h|--help)
+    -r|--rebuild-lists|--install|--update|-V|--version|-h|--help)
       return 0
       ;;
   esac

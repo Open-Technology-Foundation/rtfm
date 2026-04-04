@@ -432,6 +432,7 @@ check_install_deps() {
     vecho 'Installing git...'
     /usr/bin/apt-get -qq update ||:
     /usr/bin/apt-get -qq install git ||:
+    command -v git >/dev/null || die 1 'Failed to install git — cannot proceed'
   fi
   if ! command -v sha256sum >/dev/null; then
     warn 'sha256sum not found, checksum verification will be skipped'
@@ -597,7 +598,7 @@ main() {
            echo 'install_update_rtfm'
         } >"$install_rtfm"
         chmod 700 "$install_rtfm"
-        exec sudo "$install_rtfm"; exit 1
+        exec sudo "$install_rtfm"
         ;;
       -v|--verbose)
         VERBOSE=1 ;;

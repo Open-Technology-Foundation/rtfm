@@ -54,7 +54,7 @@ md2ansi_wrapper() {
 # Set MD2ANSI to the wrapper function name
 declare -r MD2ANSI=md2ansi_wrapper
 
-# Color definitions (if terminal output)
+# Color definitions (only when both stdout and stderr are terminals)
 if [[ -t 1 && -t 2 ]]; then
   declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
 else
@@ -79,12 +79,12 @@ _msg() {
   for msg in "$@"; do printf '%s %s\n' "$prefix" "$msg"; done
 }
 
-# Conditional output based on verbosity
+# Conditional output (suppressed by -q/--quiet)
 vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
 success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
-warn() { >&2 _msg "$@"; }
 info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
-# Unconditional output
+# Unconditional output (always shown, regardless of -q)
+warn() { >&2 _msg "$@"; }
 error() { >&2 _msg "$@"; }
 die() { (($# < 2)) || error "${@:2}"; exit "${1:-0}"; }
 
@@ -98,6 +98,7 @@ sources into a single, easy-to-use interface.
 
 USAGE
   $SCRIPT_NAME [OPTIONS] <command>
+  $SCRIPT_NAME [OPTIONS] -- <command>
   $SCRIPT_NAME --rebuild-lists
   $SCRIPT_NAME --install|--update
 
@@ -122,10 +123,11 @@ OPTIONS
                          (requires sudo and git)
 
   -v, --verbose          Enable verbose output during operations (default)
-  -q, --quiet            Suppress verbose messages during operations
+  -q, --quiet            Suppress informational messages (warnings still shown)
 
   -V, --version          Display version information
   -h, --help             Show this help message
+  --                     End of options; next argument is the command name
 
 ENVIRONMENT
   NO_COLOR               Disable all ANSI color output (any value)

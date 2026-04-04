@@ -141,9 +141,10 @@ rtfm --version
 | `-r, --rebuild-lists` | Rebuild command lists from documentation sources (requires sudo) |
 | `--install, --update` | Install or update rtfm and dependencies from GitHub |
 | `-v, --verbose` | Verbose output during operations (default) |
-| `-q, --quiet` | Suppress verbose messages |
+| `-q, --quiet` | Suppress informational messages (warnings still shown) |
 | `-V, --version` | Display version information |
 | `-h, --help` | Show help message |
+| `--` | End of options; next argument is the command name |
 
 ## Color Output
 
@@ -237,7 +238,7 @@ rtfm searches these locations in priority order:
 rtfm monitors man page directories and warns when new pages are installed:
 
 ```
-rtfm: ⚡ New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index.
+rtfm: ▲ New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index.
 ```
 
 This ensures your documentation index stays current without manual intervention.
@@ -370,7 +371,7 @@ echo 'source /usr/local/share/rtfm/rtfm.bash_completion' >> ~/.bashrc
 
 ### Code Standards
 
-This project achieves **100% compliance** with strict Bash coding standards:
+This project follows strict Bash coding standards:
 
 - **Bash Coding Standard (BCS)** - Full compliance with comprehensive Bash 5.2+ standard
   - Bottom-up function organization (messaging → validation → business logic → main)
@@ -433,7 +434,7 @@ sudo rtfm --rebuild-lists
 - ✅ **Independent stderr colors** - Error/warning messages check TTY separately for better UX
 
 **Architecture Improvements:**
-- ✅ **Manpage support** -
+- ✅ **Manpage** - Added `rtfm.1` man page with full feature documentation
 - ✅ **Bash completion** - Renamed to `rtfm.bash_completion` with optimized completion function
 
 **Security Improvements:**
@@ -451,10 +452,10 @@ sudo rtfm --rebuild-lists
 - ✅ **Script markers** - All scripts end with `#fin` marker per BCS standard
 
 **Documentation & Usability:**
-- Rewrote `usage()` function with 8 comprehensive sections (added ENVIRONMENT)
+- Rewrote `show_help()` with 8 comprehensive sections (added ENVIRONMENT)
 - Completely rewrote README.md with color detection and bash completion documentation
 - Added comprehensive inline documentation
-- Generated manpage (`rtfm.1`) with full feature documentation
+- Added manpage (`rtfm.1`) with full feature documentation
 
 **Result:** Clean text output when redirected, colored output in terminals, with full user control via environment variables
 

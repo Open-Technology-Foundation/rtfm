@@ -9,17 +9,25 @@ _rtfm() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   # Options from the rtfm script
-  opts="-r --rebuild-lists --install --update -v --verbose -q --quiet -V --version -h --help"
+  opts="-r --rebuild-lists --install --update -v --verbose -q --quiet -V --version -h --help --"
+
+  # Check if -- separator has been used (everything after is a command name)
+  local -i i past_separator=0
+  for ((i = 1; i < COMP_CWORD; i++)); do
+    [[ ${COMP_WORDS[i]} == -- ]] && past_separator=1
+  done
 
   # Terminal options: these actions exit immediately, no further arguments needed
-  case "$prev" in
-    -r|--rebuild-lists|--install|--update|-V|--version|-h|--help)
-      return 0
-      ;;
-  esac
+  if ! ((past_separator)); then
+    case "$prev" in
+      -r|--rebuild-lists|--install|--update|-V|--version|-h|--help)
+        return 0
+        ;;
+    esac
+  fi
 
-  # If current word starts with dash, complete with options
-  if [[ "$cur" == -* ]]; then
+  # If current word starts with dash and we haven't passed --, complete with options
+  if [[ "$cur" == -* ]] && ! ((past_separator)); then
     mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
     return 0
   fi

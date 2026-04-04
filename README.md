@@ -288,7 +288,7 @@ Documentation is concatenated with page breaks and piped through:
 - **Executable**: `/usr/local/bin/rtfm`
 - **Documentation indices**: `/usr/local/share/rtfm/*.list`
 - **Bash completion**: `/usr/local/share/rtfm/rtfm.bash_completion`
-- **Manpage**: `/usr/local/share/man/man1/rtfm.1` (if installed via `rtfm-manpage.sh --install`)
+- **Manpage**: `/usr/local/share/man/man1/rtfm.1`
 - **Repository**: `/usr/local/share/rtfm/` (reference/documentation)
 - **TLDR pages**: `/usr/local/share/tldr/`
 - **md2ansi**: `/usr/local/share/md2ansi/`
@@ -386,7 +386,7 @@ This project achieves **100% compliance** with strict Bash coding standards:
 
 ```bash
 # Lint all shell scripts
-shellcheck rtfm rtfm.bash_completion update-checksums.sh rtfm-manpage.sh
+shellcheck rtfm rtfm.bash_completion update-checksums.sh
 
 # Test basic functionality
 rtfm --help
@@ -433,7 +433,7 @@ sudo rtfm --rebuild-lists
 - ✅ **Independent stderr colors** - Error/warning messages check TTY separately for better UX
 
 **Architecture Improvements:**
-- ✅ **Manpage support** - Added `rtfm-manpage.sh` generator with `--install` option for system integration
+- ✅ **Manpage support** -
 - ✅ **Bash completion** - Renamed to `rtfm.bash_completion` with optimized completion function
 
 **Security Improvements:**

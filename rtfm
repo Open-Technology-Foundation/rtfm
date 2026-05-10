@@ -293,7 +293,7 @@ check_manpage_updates() {
   for dir in "${man_paths[@]}"; do
     if [[ -d $dir ]]; then
       # Find any man page file newer than man.list
-      if find "$dir" -type f \( -name '*.[1-9]*.gz' -o -name '*.[1-9]*' \) \
+      if find -L "$dir" -type f \( -name '*.[1-9]*.gz' -o -name '*.[1-9]*' \) \
           -newer "$man_list" -print -quit 2>/dev/null | grep -q .; then
         warn "New man pages detected. Run 'sudo rtfm --rebuild-lists' to update the index."
         return 0
@@ -321,7 +321,7 @@ rebuild_help_lists() {
   vecho "Updating 'man' command list"
   local -a man_paths=()
   readarray -t man_paths < <(get_man_paths)
-  sudo find "${man_paths[@]}" -type f \( -name '*.[1-9]*.gz' -o -name '*.[1-9]*' \) 2>/dev/null \
+  sudo find -L "${man_paths[@]}" -type f \( -name '*.[1-9]*.gz' -o -name '*.[1-9]*' \) 2>/dev/null \
     | sed 's|.*/||; s/\.[1-9][a-z]*\(\.gz\)*$//' \
     | sort -u | grep -v '^$' \
     >/usr/local/share/rtfm/man.list || true

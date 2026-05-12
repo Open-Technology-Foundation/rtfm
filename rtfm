@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # rtfm - Read The Fucking Manuals - searches and concatenates documentation
 set -euo pipefail
-shopt -s inherit_errexit shift_verbose extglob nullglob
+shopt -s inherit_errexit
 
 # PATH security
 declare -rx PATH=/usr/local/bin:/usr/bin:/bin
 
-# Script metadata
+# --- Metadata ---
+
 declare -r VERSION='1.2.1'
 #shellcheck disable=SC2155
 declare -r SCRIPT_PATH=$(realpath -- "$0")
-declare -r SCRIPT_NAME="${SCRIPT_PATH##*/}"
+declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
 
-# Global variable declarations
-declare -i VERBOSE=1
+# --- Global Vars ---
 
 # Initialize COLUMNS for md2ansi if not already set
 declare -ix COLUMNS
@@ -38,7 +38,10 @@ MD2ANSI_CMD=$(command -v md2ansi 2>/dev/null || command -v cat)
 LESSx=$(command -v less || echo 'cat')
 readonly MD2ANSI_CMD LESSx
 
-# Wrapper function for md2ansi that respects color settings
+# Pipe markdown through md2ansi (or fall back to `cat -s` if unavailable).
+# Honours USE_COLOR: when colour is disabled, md2ansi is run under TERM=dumb so
+# it emits plain text rather than ANSI sequences. The fallback `cat -s`
+# squeezes blank-line runs to keep output looking similar to md2ansi's spacing.
 md2ansi_wrapper() {
   if [[ $MD2ANSI_CMD == *md2ansi ]]; then
     if ((USE_COLOR)); then
@@ -54,41 +57,37 @@ md2ansi_wrapper() {
 # Set MD2ANSI to the wrapper function name
 declare -r MD2ANSI=md2ansi_wrapper
 
-# Color definitions (only when both stdout and stderr are terminals)
+# --- Utility Functions ---
+
+declare -i VERBOSE=1
+
+# NOTE: RED/GREEN/YELLOW/CYAN/NC are already declared readonly above (see the
+# "Color definitions" block). The duplicate block below re-asserts the same
+# values; it is a historical leftover from refactoring and should eventually
+# be removed. Do not add new colour variables here — define them with the
+# upstream block.
 if [[ -t 1 && -t 2 ]]; then
   declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
 else
   declare -r RED='' GREEN='' YELLOW='' CYAN='' NC=''
 fi
 
-# --------------------------------------------------------------------------------
-# Utility functions
-# --------------------------------------------------------------------------------
+# Message helpers — all route through _msg which prints to stderr as
+# "<script>: <symbol> <message>". Symbol prefixes follow project icon
+# conventions: ✗ error · ▲ warn · ◉ info · ✓ success · DEBUG debug.
+# vecho/info/success/debug are silent unless their gate variable is set;
+# error/die/warn always print.
+_msg() { >&2 printf "$SCRIPT_NAME: $1 %s\n" "${@:2}"; }
+error()   { _msg "$RED✗$NC" "$@"; }
+die()     { (($# < 2)) || error "${@:2}"; exit "${1:-0}"; }
+warn()    { _msg "$YELLOW▲$NC" "$@"; }
+vecho()   { ((VERBOSE)) || return 0; _msg '' "$@"; }
+info()    { ((VERBOSE)) || return 0; _msg "$CYAN◉$NC" "$@"; }
+success() { ((VERBOSE)) || return 0; _msg "$GREEN✓$NC" "$@"; }
+# debug() is gated on $DEBUG (not declared by default); invoke with
+# `DEBUG=1 rtfm …` to enable. Currently has no in-tree callers.
+debug()   { ((DEBUG)) || return 0; _msg "${RED}DEBUG$NC" "$@"; }
 
-# Core message function using FUNCNAME for context
-_msg() {
-  local -- prefix="$SCRIPT_NAME:" msg
-  case ${FUNCNAME[1]} in
-    success) prefix+=" ${GREEN}✓${NC}" ;;
-    warn)    prefix+=" ${YELLOW}▲${NC}" ;;
-    info)    prefix+=" ${CYAN}◉${NC}" ;;
-    error)   prefix+=" ${RED}✗${NC}" ;;
-    vecho)   ;;
-    *)       ;;
-  esac
-  for msg in "$@"; do printf '%s %s\n' "$prefix" "$msg"; done
-}
-
-# Conditional output (suppressed by -q/--quiet)
-vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
-success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
-info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
-# Unconditional output (always shown, regardless of -q)
-warn() { >&2 _msg "$@"; }
-error() { >&2 _msg "$@"; }
-die() { (($# < 2)) || error "${@:2}"; exit "${1:-0}"; }
-
-# Print usage information
 show_help() {
   cat <<HELP
 $SCRIPT_NAME $VERSION - Read The Fucking Manuals
@@ -188,9 +187,7 @@ SEE ALSO
 HELP
 }
 
-# --------------------------------------------------------------------------------
-# Validation and helper functions
-# --------------------------------------------------------------------------------
+# --- Validation and Helper Functions ---
 
 # Validate command name for security
 validate_command_name() {
@@ -260,11 +257,12 @@ validate_command_name() {
   return 0
 }
 
-# --------------------------------------------------------------------------------
-# Path and command discovery functions
-# --------------------------------------------------------------------------------
+# --- Path and Command Discovery Functions ---
 
-# Get man paths from manpath command, with fallback to common locations
+# Emit one man-page directory per line on stdout.
+# Source: `manpath` command if present; otherwise a fixed fallback list.
+# Args: none
+# Stdout: directories, newline-separated (no trailing newline guaranteed)
 get_man_paths() {
   local -a paths=()
   local -- IFS=':'
@@ -278,7 +276,11 @@ get_man_paths() {
   printf '%s\n' "${paths[@]}"
 }
 
-# Check if man page directories have been updated since last list rebuild
+# Warn (once) if any file under the configured man directories is newer
+# than /usr/local/share/rtfm/man.list. Short-circuits on the first match
+# (`-print -quit`) so it stays cheap even on systems with many man pages.
+# Silent no-op if man.list does not exist (e.g. first run before install).
+# Args: none. Side-effects: may emit a warn() to stderr.
 check_manpage_updates() {
   local -- man_list=/usr/local/share/rtfm/man.list
 
@@ -302,11 +304,15 @@ check_manpage_updates() {
   done
 }
 
-# --------------------------------------------------------------------------------
-# List building and installation functions
-# --------------------------------------------------------------------------------
+# --- List building and installation functions ---
 
-# Rebuild command lists from each help source
+# Regenerate the four lookup indices under /usr/local/share/rtfm/:
+#   builtin.list  - bash builtins (compgen -b)
+#   tldr.list     - tldr page basenames from common/ and linux/
+#   man.list      - all section files under the configured manpath
+#   info.list     - .info* files under /usr/share/info and /usr/local/share/info
+# Each list is sorted, deduplicated, and chmod 644. Uses sudo internally so
+# the rtfm dispatcher must already have re-execed under sudo before calling.
 rebuild_help_lists() {
   sudo mkdir -m 755 -p /usr/local/share/rtfm
 
@@ -340,7 +346,9 @@ rebuild_help_lists() {
   return 0
 }
 
-# Calculate SHA256 checksum of a file
+# Print the SHA-256 hex digest of a file on stdout.
+# Args: $1 = path to file
+# Returns: 0 with hash on stdout; 1 + stderr error if file missing.
 calculate_checksum() {
   local -- file=$1
   if [[ ! -f $file ]]; then
@@ -350,7 +358,9 @@ calculate_checksum() {
   sha256sum "$file" 2>/dev/null | cut -d' ' -f1
 }
 
-# Verify file against expected SHA256 hash
+# Compare a file's actual SHA-256 against an expected digest.
+# Args: $1 = path to file, $2 = expected hex digest
+# Returns: 0 on match, 1 on mismatch or missing file.
 verify_checksum() {
   local -- file=$1 expected_hash=$2
   local -- actual_hash
@@ -369,7 +379,11 @@ verify_checksum() {
   [[ $actual_hash == "$expected_hash" ]]
 }
 
-# Download checksums file from repository
+# Fetch checksums.sha256 for a repo into $basedir.
+# Args: $1 = repo name (e.g. "rtfm"), $2 = local directory to write into,
+#       $3 = repo-base URL (defaults to the Open-Technology-Foundation org).
+# Uses curl if available, else wget; errors if neither is installed.
+# Returns: 0 on success, 1 on missing downloader.
 download_checksums() {
   local -- repo=$1 basedir=$2
   local -- REPOBASE=${3:-https://github.com/Open-Technology-Foundation}
@@ -388,7 +402,12 @@ download_checksums() {
   fi
 }
 
-# Verify repository files against checksums
+# Walk a downloaded repo's checksums.sha256 and verify each listed file.
+# Args: $1 = repo name (for log messages), $2 = local repo directory.
+# Returns: 0 if every listed file matches (or no checksum file shipped —
+# backward-compat path that warns and proceeds); 1 if any verify failed.
+# Missing-but-listed files emit a warn() but do not fail verification —
+# only mismatches are treated as fatal.
 verify_repo_integrity() {
   local -- repo=$1 basedir=$2
   local -- checksum_file="$basedir"/checksums.sha256
@@ -405,10 +424,13 @@ verify_repo_integrity() {
   # Read checksums and verify each file
   while IFS='  ' read -r hash filename; do
     # Skip empty lines and comments
-    [[ -z $hash || $hash =~ ^# ]] && continue
+    [[ -z $hash || $hash =~ ^# ]] && continue ||:
 
-    # Skip files that are in .gitignore (like CLAUDE.md)
-    [[ $filename == CLAUDE.md ]] && continue
+    # CLAUDE.md is gitignored and never shipped in checksums.sha256, but a
+    # stale entry can persist if the file existed locally when the checksum
+    # was generated. Skip it explicitly so verification doesn't fail on a
+    # file that legitimately won't be in the clone.
+    [[ $filename == CLAUDE.md ]] && continue ||:
 
     if [[ -f $basedir/$filename ]]; then
       if verify_checksum "$basedir/$filename" "$hash"; then
@@ -529,7 +551,9 @@ install_update_rtfm() {
     fi
   done
 
-  # Only rebuild lists if rtfm was successfully updated
+  # Abort the whole install if rtfm itself didn't land or any component
+  # failed; otherwise refresh the documentation indices to reflect any new
+  # man/info/tldr pages the install pulled in.
   if [[ ! -f /usr/local/bin/rtfm ]] || ((update_failed)); then
     die 1 'Update failed for one or more components'
   fi
@@ -540,27 +564,28 @@ install_update_rtfm() {
   exit 0
 }
 
-# Check if user has sudo privileges
+# Best-effort check that the calling user can elevate to root.
+# Short-circuits true when EUID == 0 (already root). Otherwise verifies the
+# `sudo` binary exists and the user is in a conventional sudo-bearing group
+# (sudo / admin / wheel). This is a heuristic — it does not actually invoke
+# `sudo -v`, so a sudoers entry that grants rights via netgroup or hostname
+# rules will not be detected here. Returns 0 if elevation looks plausible,
+# 1 otherwise (with an error message to stderr).
 can_sudo() {
   ((EUID)) || return 0
-  # Check if sudo exists
   if ! command -v sudo &>/dev/null; then
     error "'sudo' command not found. This operation requires root privileges."
     return 1
   fi
-  # Check if user is in sudo/admin group (common sudo access indicator)
   if ! groups | grep -qE '\b(sudo|admin|wheel)\b'; then
     error "Your user account doesn't appear to have sudo privileges." \
         'This operation requires root or sudo access.'
     return 1
   fi
-  # User has sudo command and appears to be in sudo group
   return 0
 }
 
-# --------------------------------------------------------------------------------
-# Main function
-# --------------------------------------------------------------------------------
+# --- Main ---
 
 main() {
   local -- cmd='' pagebreak=''
@@ -601,22 +626,30 @@ main() {
         exec sudo "$install_rtfm"
         ;;
       -v|--verbose)
-        VERBOSE=1 ;;
+        VERBOSE=1
+        ;;
       -q|--quiet)
-        VERBOSE=0 ;;
+        VERBOSE=0
+        ;;
       -h|--help)
-        show_help; exit 0 ;;
+        show_help
+        exit 0
+        ;;
       -V|--version)
-        echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
+        printf '%s %s\n' "$SCRIPT_NAME" "$VERSION"
+        exit 0
+        ;;
 
       --)
         shift; break ;;
       -[rvqhV]?*)
         set -- "${1:0:2}" "-${1:2}" "${@:2}"; continue ;;
 
-      -*) die 22 "Invalid option ${1@Q}" ;;
-
-      *)  [[ -z $cmd ]] || die 2 "Too many arguments ${1@Q}"
+      -*)
+        die 22 "Invalid option ${1@Q}"
+        ;;
+      *)
+        [[ -z $cmd ]] || die 2 "Too many arguments ${1@Q}"
         cmd=$1
         # Validate command name for security
         validate_command_name "$cmd" || die 22 "Invalid command name ${cmd@Q}"
@@ -635,8 +668,8 @@ main() {
 
   # Ensure command is specified
   if [[ -z $cmd ]]; then
-    error 'No command specified'
     >&2 show_help
+    error 'No command specified'
     exit 2
   fi
 
@@ -653,9 +686,9 @@ main() {
       printf '%s# MAN\n' "$pagebreak" | "$MD2ANSI"
       declare -a OPTs=(--pager=cat --no-hyphenation --no-justification)
       if ((USE_COLOR)); then
-        env MANWIDTH="$COLUMNS" /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
+        env MANWIDTH=$COLUMNS /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
       else
-        env GROFF_NO_SGR=1 MANWIDTH="$COLUMNS" /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
+        env GROFF_NO_SGR=1 MANWIDTH=$COLUMNS /usr/bin/man "${OPTs[@]}" "$cmd" 2>/dev/null | col -b
       fi
       pagebreak=$'\n---\n'
     fi

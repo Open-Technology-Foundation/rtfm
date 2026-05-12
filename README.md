@@ -286,11 +286,13 @@ Documentation is concatenated with page breaks and piped through:
 
 ## File Locations
 
-- **Executable**: `/usr/local/bin/rtfm`
+After `sudo rtfm --install`/`--update`, the cloned repos and indices land at:
+
+- **Executable**: `/usr/local/bin/rtfm` (copied from the repo)
 - **Documentation indices**: `/usr/local/share/rtfm/*.list`
-- **Bash completion**: `/usr/local/share/rtfm/rtfm.bash_completion`
-- **Manpage**: `/usr/local/share/man/man1/rtfm.1`
-- **Repository**: `/usr/local/share/rtfm/` (reference/documentation)
+- **Repository checkout**: `/usr/local/share/rtfm/` (contains README.md, LICENSE, the source `rtfm` script, `rtfm.1`, `rtfm.bash_completion`, etc.)
+- **Bash completion source**: `/usr/local/share/rtfm/rtfm.bash_completion` (not auto-installed — source it from `~/.bashrc` or copy to `/etc/bash_completion.d/rtfm`; see Bash Completion above)
+- **Manpage source**: `/usr/local/share/rtfm/rtfm.1` (not auto-installed into the man path — for `man rtfm` to work, copy it manually: `sudo cp /usr/local/share/rtfm/rtfm.1 /usr/local/share/man/man1/ && sudo mandb`)
 - **TLDR pages**: `/usr/local/share/tldr/`
 - **md2ansi**: `/usr/local/share/md2ansi/`
 
@@ -385,26 +387,39 @@ This project follows strict Bash coding standards:
 
 ### Testing
 
-```bash
-# Lint all shell scripts
-shellcheck rtfm rtfm.bash_completion update-checksums.sh
+The repo ships a self-contained test harness at `./tests.bash` — pure bash, no external test framework, ~80 assertions across option parsing, input validation, source lookups, colour detection, exit-code contract, lint, and repo invariants. Destructive tests (`--install`, `--update`, `--rebuild-lists`) are intentionally skipped.
 
-# Test basic functionality
+```bash
+# Run the full suite
+./tests.bash
+
+# Filter to a subset by substring match on test name
+./tests.bash colour          # only colour-detection tests
+./tests.bash validation      # only input-validation tests
+./tests.bash 'exit codes'    # only exit-code contract block
+```
+
+Exit codes: `0` all-pass, `1` any failure, `2` filter matched nothing.
+
+Lint and quick manual checks (also run by `tests.bash`):
+
+```bash
+# Lint every shell file
+shellcheck rtfm rtfm.bash_completion update-checksums.sh tests.bash
+
+# Manual smoke tests
 rtfm --help
 rtfm --version
-rtfm echo
+rtfm declare                            # builtin lookup
+rtfm ls                                 # man-page lookup
+NO_COLOR=1 rtfm ls                      # no colours
+FORCE_COLOR=1 rtfm ls >/tmp/test.txt    # colours even when redirected
 
-# Test color detection
-rtfm ls                      # Should have colors in TTY
-rtfm ls >/tmp/test.txt       # Should be clean text
-NO_COLOR=1 rtfm ls           # Should have no colors
-FORCE_COLOR=1 rtfm ls >/tmp/test.txt  # Should have colors
-
-# Test bash completion
+# Bash completion
 source rtfm.bash_completion
-complete -p rtfm             # Should show: complete -F _rtfm rtfm
+complete -p rtfm                        # → complete -F _rtfm rtfm
 
-# Test rebuilding indices (requires sudo)
+# Rebuild indices (requires sudo)
 sudo rtfm --rebuild-lists
 ```
 
@@ -412,9 +427,10 @@ sudo rtfm --rebuild-lists
 
 1. Fork the repository
 2. Make your changes following the Bash Coding Standard (BCS)
-3. Run `./update-checksums.sh` before committing
-4. Ensure `shellcheck rtfm` passes with no warnings
-5. Submit a pull request
+3. Run `./tests.bash` — all tests must pass (skips are acceptable)
+4. Run `./update-checksums.sh` before committing
+5. Ensure `shellcheck rtfm rtfm.bash_completion update-checksums.sh tests.bash` passes with no warnings
+6. Submit a pull request
 
 ## Version History
 

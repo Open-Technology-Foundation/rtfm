@@ -74,8 +74,8 @@ fi
 
 # Message helpers — all route through _msg which prints to stderr as
 # "<script>: <symbol> <message>". Symbol prefixes follow project icon
-# conventions: ✗ error · ▲ warn · ◉ info · ✓ success · DEBUG debug.
-# vecho/info/success/debug are silent unless their gate variable is set;
+# conventions: ✗ error · ▲ warn · ◉ info · ✓ success.
+# vecho/info/success are silent unless their gate variable is set;
 # error/die/warn always print.
 _msg() { >&2 printf "$SCRIPT_NAME: $1 %s\n" "${@:2}"; }
 error()   { _msg "$RED✗$NC" "$@"; }
@@ -84,9 +84,6 @@ warn()    { _msg "$YELLOW▲$NC" "$@"; }
 vecho()   { ((VERBOSE)) || return 0; _msg '' "$@"; }
 info()    { ((VERBOSE)) || return 0; _msg "$CYAN◉$NC" "$@"; }
 success() { ((VERBOSE)) || return 0; _msg "$GREEN✓$NC" "$@"; }
-# debug() is gated on $DEBUG (not declared by default); invoke with
-# `DEBUG=1 rtfm …` to enable. Currently has no in-tree callers.
-debug()   { ((DEBUG)) || return 0; _msg "${RED}DEBUG$NC" "$@"; }
 
 show_help() {
   cat <<HELP
@@ -317,12 +314,12 @@ rebuild_help_lists() {
   sudo mkdir -m 755 -p /usr/local/share/rtfm
 
   vecho "Updating 'builtin' command list"
-  compgen -b | sort -u >/usr/local/share/rtfm/builtin.list || true
+  compgen -b | sort -u >/usr/local/share/rtfm/builtin.list ||:
 
   vecho "Updating 'tldr' command list"
   sudo find /usr/local/share/tldr/pages/common/ /usr/local/share/tldr/pages/linux/ -type f -exec basename -s '.md' {} \; 2>/dev/null \
     | sort -u | grep -v '^$' \
-    >/usr/local/share/rtfm/tldr.list || true
+    >/usr/local/share/rtfm/tldr.list ||:
 
   vecho "Updating 'man' command list"
   local -a man_paths=()
@@ -330,13 +327,13 @@ rebuild_help_lists() {
   sudo find -L "${man_paths[@]}" -type f \( -name '*.[1-9]*.gz' -o -name '*.[1-9]*' \) 2>/dev/null \
     | sed 's|.*/||; s/\.[1-9][a-z]*\(\.gz\)*$//' \
     | sort -u | grep -v '^$' \
-    >/usr/local/share/rtfm/man.list || true
+    >/usr/local/share/rtfm/man.list ||:
 
   vecho "Updating 'info' command list"
   sudo find /usr/share/info /usr/local/share/info -type f -name '*.info*' 2>/dev/null \
     | sed 's/\.info.*$//' | sed 's|.*/||' \
     | sort -u | grep -v '^$' \
-    >/usr/local/share/rtfm/info.list || true
+    >/usr/local/share/rtfm/info.list ||:
 
   sudo chmod 644 \
     /usr/local/share/rtfm/builtin.list \
@@ -676,13 +673,13 @@ main() {
   # Check for outdated man page index
   check_manpage_updates
 
-  ( if grep -q -m1 "^$cmd$" /usr/local/share/rtfm/builtin.list 2>/dev/null; then
+  ( if grep -Fxq -- "$cmd" /usr/local/share/rtfm/builtin.list 2>/dev/null; then
       printf '# BUILTIN\n\n' | "$MD2ANSI"
       builtin help -m "$cmd" 2>/dev/null || builtin help "$cmd"
       pagebreak=$'\n---\n'
     fi
 
-    if grep -q -m1 "^$cmd$" /usr/local/share/rtfm/man.list 2>/dev/null; then
+    if grep -Fxq -- "$cmd" /usr/local/share/rtfm/man.list 2>/dev/null; then
       printf '%s# MAN\n' "$pagebreak" | "$MD2ANSI"
       declare -a OPTs=(--pager=cat --no-hyphenation --no-justification)
       if ((USE_COLOR)); then
@@ -693,7 +690,7 @@ main() {
       pagebreak=$'\n---\n'
     fi
 
-    if grep -q -m1 "^$cmd$" /usr/local/share/rtfm/info.list 2>/dev/null; then
+    if grep -Fxq -- "$cmd" /usr/local/share/rtfm/info.list 2>/dev/null; then
       printf '%s# INFO\n' "$pagebreak" | "$MD2ANSI"
       /usr/bin/info "$cmd" 2>/dev/null
       pagebreak=$'\n---\n'
@@ -716,14 +713,14 @@ main() {
       cmd_path=$(command -v "$cmd" 2>/dev/null)
 
       # Follow symlinks to get the real path
-      real_path=$(realpath -f "$cmd_path" 2>/dev/null || echo "$cmd_path")
+      real_path=$(realpath -- "$cmd_path" 2>/dev/null || echo "$cmd_path")
 
       # Check if it's a text file (script)
       if [[ -f $real_path ]] && file -b "$real_path" 2>/dev/null | grep -q 'text'; then
         # Check if the script contains --help
         if grep -q -- '--help' "$real_path" 2>/dev/null; then
           printf '%s# COMMAND HELP\n\n' "$pagebreak" | "$MD2ANSI"
-          "$cmd" --help 2>&1 || true
+          "$cmd" --help 2>&1 ||:
           pagebreak=$'\n---\n'
         fi
       fi
